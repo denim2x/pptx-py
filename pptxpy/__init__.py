@@ -4,6 +4,11 @@
 
 __version__ = '0.0.1'
 
+try:
+  import pptx
+except ImportError:
+  raise Exception("Module pptx-py requires python-pptx in order to run; please install it first, then try again")
+
 import posixpath
 
 from pptx.slide import Slides
