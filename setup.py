@@ -27,7 +27,7 @@ license = ascii_bytes_from(thisdir, "LICENSE")
 # Read the version from pptx.__version__ without importing the package
 # (and thus attempting to import packages it depends on that may not be
 # installed yet)
-version = re.search(r'__version__ = "([^"]+)"', init_py).group(1)
+version = re.search(r'''__version__ = ["']([^"']+)["']''', init_py).group(1)
 
 
 NAME = "pptx-py"
