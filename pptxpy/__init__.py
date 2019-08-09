@@ -62,7 +62,7 @@ def clone(self, base_uri=None, base_id=None):
 
   uri = None
   if base_uri is not None:
-    uri = PackURI('%s%d.%s' % (basename(base_uri), base_uri.idx + 1, base_uri.ext))
+    uri = PackURI('%s/slide%d.%s' % (base_uri.baseURI, base_uri.idx + 1, base_uri.ext))
   part = SlidePart.load(uri, self.content_type, self.blob, self.package)
 
   if base_id is not None:
