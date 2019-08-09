@@ -1,0 +1,12 @@
+.cache
+.coverage
+/.tox/
+*.egg-info
+*.pyc
+/dist/
+/docs/.build
+out.txt
+_scratch/
+/spec/gen_spec/spec*.db
+tags
+/tests/debug.py

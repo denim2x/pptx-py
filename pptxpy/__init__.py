@@ -1,4 +1,11 @@
-from lxml import etree
+# encoding: utf-8
+
+"""Initialization module for python-pptx package."""
+
+__version__ = '0.0.1'
+
+import posixpath
+
 from pptx.slide import Slides
 from pptx.parts.slide import SlidePart
 from pptx.opc.packuri import PackURI
@@ -55,7 +62,7 @@ def clone(self, base_uri=None, base_id=None):
 
   uri = None
   if base_uri is not None:
-    uri = PackURI('%s%d.%s' % (basename(base_uri), base_uri.idx + 1, base_uri.ext)
+    uri = PackURI('%s%d.%s' % (basename(base_uri), base_uri.idx + 1, base_uri.ext))
   part = SlidePart.load(uri, self.content_type, self.blob, self.package)
 
   if base_id is not None:
