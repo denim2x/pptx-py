@@ -11,11 +11,12 @@ except ImportError:
 
 import posixpath
 
-from pptx.slide import Slides
+from pptx.slide import Slide, Slides
 from pptx.parts.slide import SlidePart
 from pptx.opc.packuri import PackURI
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.parts.presentation import PresentationPart  #FIXME: Attach *duplicate()* here also
+from pptx.opc.package import _Relationship as Rel, RelationshipCollection as Rels
 
 
 def duplicate(self, slide_index=None, slide_id=None, new_ids=False):
@@ -36,18 +37,15 @@ def duplicate(self, slide_index=None, slide_id=None, new_ids=False):
   if slide is None:
       return  
 
-  max_id = 0 if new_ids else None
-  max_uri, max_idx = None, 0
-  for slide in self:
-    if new_ids:
+  max_id = None
+  if new_ids:
+    max_id = 0
+    for slide in self:
       max_id = max(max_id, *iter_ids(slide))
-    uri = partname(slide)
-    if max_idx < uri.idx:
-      max_uri, max_idx = uri, uri.idx
-
-  slide_part = clone(slide._part, max_uri, max_id)
-
+  
   part = self.part
+  slide_part = clone(slide.part, part._next_slide_partname, max_id)
+
   rId = part.relate_to(slide_part, RT.SLIDE)
   self._sldIdLst.add_sldId(rId)
 
@@ -55,7 +53,7 @@ def duplicate(self, slide_index=None, slide_id=None, new_ids=False):
 
 Slides.duplicate = duplicate
 
-def clone(self, base_uri=None, base_id=None):
+def clone(self, uri=None, base_id=None):
   """
   Creates an exact copy of *self* (|SlidePart|) by building a new |SlidePart|
   instance from *self*, optionally increasing all ID values by *base_id*, if 
@@ -65,18 +63,37 @@ def clone(self, base_uri=None, base_id=None):
   Return value: The newly created |SlidePart| instance.
   """
 
-  uri = None
-  if base_uri is not None:
-    uri = PackURI('%s/slide%d.%s' % (base_uri.baseURI, base_uri.idx + 1, base_uri.ext))
   part = SlidePart.load(uri, self.content_type, self.blob, self.package)
+  part.rels.assign(self)
 
   if base_id is not None:
     pass   # FIXME: Finish implementation
 
   return part
 
-def partname(self):
-  return self._part.partname
+def Rels_assign(self, src):
+  """
+  Assigns all |_Relationship| instances from *src* to *self*
+  """
+  if src is None:
+    return self
+
+  if isinstance(src, Slide):
+    src = src.part
+
+  if isinstance(src, SlidePart):
+    src = src.rels
+
+  if isinstance(src, dict):
+    for rId, rel in src.items():
+      self.add_relationship(rel.reltype, rel._target, rId, rel.is_external)
+  else:
+    for rel in src:
+      self.add_relationship(rel.reltype, rel._target, rel.rId, rel.is_external)
+
+  return self
+
+Rels.assign = Rels_assign
 
 def iter_ids(self):
   for e in xpath(self, '//@id'):
@@ -85,8 +102,48 @@ def iter_ids(self):
 def xpath(self, expr):
   return self.element.xpath(expr)
 
-def basename(self):
-  filename = self.filename
-  if not filename:
-      return None
-  return posixpath.splitext(filename)[0]
+def Rels_eq(self, other):
+  if self is None:
+    return other is None
+
+  if other is None:
+    return False
+
+  if not isinstance(other, Rels):
+    return False
+
+  if len(self) != len(other):
+    return False
+
+  for rId, rel in self.items():
+    if not rId in other:
+      return False
+    if rel != other[rId]:
+      return False
+
+  return True
+
+Rels.__eq__ = Rels_eq
+
+def Rel_eq(self, other):
+  if self is None:
+    return other is None
+
+  if other is None:
+    return False
+
+  if not isinstance(other, Rel):
+    return False
+
+  if self.reltype != other.reltype:
+    return False
+
+  if self._target != other._target:
+    return False
+
+  if self.is_external != other.is_external:
+    return False
+
+  return True
+
+Rel.__eq__ = Rel_eq
