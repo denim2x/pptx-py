@@ -21,12 +21,15 @@ assert p.slides[0].part.blob == c.part.blob
 
 assert p.slides[0].part.rels == c.part.rels
 
+import sys
+if len(sys.argv) > 1:
+  path = sys.argv[1]
+  p.save(path)
+
 a_solidFills = p.slides[0].background.element.xpath('//a:solidFill')
 c_solidFills = c.background.element.xpath('//a:solidFill')
 
 c.background.fill.solid()
 
 assert p.slides[0].part.blob != c.part.blob
-#assert p.slides[0].background.fill.type == 5
 assert c.background.fill.type == 1
-#assert len(a_solidFills) != len(c_solidFills)

@@ -1,29 +1,32 @@
 # encoding: utf-8
 
-"""Initialization module for python-pptx package."""
+"""Python library with various tools for enhancing python-pptx"""
 
 __version__ = '0.0.1'
 
 try:
   import pptx
 except ImportError:
-  raise Exception("Module pptx-py requires python-pptx in order to run; please install it first, then try again")
+  raise Exception("Module pptx-py requires python-pptx in order to run. Install it first, then try again.")
 
-import posixpath
+import posixpath, re
 
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
-from pptx.opc.package import _Relationship as Rel, RelationshipCollection as Rels
-from pptx.parts.presentation import PresentationPart  #FIXME: Attach *duplicate()* here also
-from pptx.parts.chart import ChartPart
-from pptx.parts.slide import SlidePart
-from pptx.slide import Slide, Slides
+from pptx.opc.package import _Relationship as Rel, RelationshipCollection as Rels, Part
+from pptx.opc.packuri import PackURI
+from pptx.shared import PartElementProxy
+from pptx.slide import Slides
+
+static_rels = {
+  RT.IMAGE, RT.MEDIA, RT.VIDEO, RT.SLIDE_LAYOUT, RT.NOTES_MASTER, RT.SLIDE_MASTER
+}
 
 
-def Slides_duplicate(self, slide_index=None, slide_id=None, new_ids=False):
+def Slides_duplicate(self, slide_index=None, slide_id=None):
   """
-  Creates an _identical_ copy of the |Slide| at *slide_index* (or *slide_id*) 
-  by cloning its corresponding |SlidePart| instance, then inserts it into *self*.
-  Optionally creates new element IDs, according to *new_ids*.
+  Creates an _identical_ copy of the |Slide| instance (given by either *slide_index*
+  _or_ *slide_id*) by cloning its corresponding |SlidePart| instance, then appends
+  it to *self*.
 
   Return value: the newly created |Slide| instance.
   """
@@ -35,16 +38,12 @@ def Slides_duplicate(self, slide_index=None, slide_id=None, new_ids=False):
       slide = self.get(slide_id)
 
   if slide is None:
-      return  
-
-  max_id = None
-  if new_ids:
-    max_id = 0
-    for slide in self:
-      max_id = max(max_id, *iter_ids(slide))
+      return 
   
   part = self.part
-  slide_part = clone(slide.part, part._next_slide_partname, max_id)
+  parts = part.package.parts
+  cloner = Cloner(parts)
+  slide_part = slide.part.clone(part._next_slide_partname, cloner)
 
   rId = part.relate_to(slide_part, RT.SLIDE)
   self._sldIdLst.add_sldId(rId)
@@ -54,37 +53,38 @@ def Slides_duplicate(self, slide_index=None, slide_id=None, new_ids=False):
 Slides.duplicate = Slides_duplicate
 
 
-def clone(self, uri=None, base_id=None):
+def Part_clone(self, uri=None, cloner=None):
   """
-  Creates an exact copy of *self* (|SlidePart|) by building a new |SlidePart|
-  instance from *self*, optionally increasing all ID values by *base_id*, if 
-  specified. The new |SlidePart|'s *partname* is *base_uri* increased by 1,
-  if specified.
+  Creates an exact copy of this |Part| instance. The *partname* of the new instance
+  is *uri* if non-null, otherwise *self.partname*.
   
-  Return value: The newly created |SlidePart| instance.
+  Return value: The newly created |Part| instance.
   """
+  if uri is None:
+    uri = self.partname
 
-  part = SlidePart.load(uri, self.content_type, self.blob, self.package)
-  part.rels.assign(self)
+  if self not in cloner:
+    part = self.load(uri, self.content_type, self.blob, self.package)
+    part.rels.assign(self, cloner + self)
+    return part
 
-  if base_id is not None:
-    pass   # FIXME: Finish implementation
+  return self
 
-  return part
+Part.clone = Part_clone
 
 
-def Rels_assign(self, src, create_clones=True):
+def Rels_assign(self, src, cloner=None):
   """
   Assigns all |_Relationship| instances from *src* to *self*; optionally
-  creates clones of all non-static related parts, according to *create_clones*
+  creates clones of all non-static target parts (when *cloner* is non-null)
   """
   if src is None:
     return self
 
-  if isinstance(src, Slide):
+  if isinstance(src, PartElementProxy):
     src = src.part
 
-  if isinstance(src, SlidePart):
+  if isinstance(src, Part):
     src = src.rels
 
   if isinstance(src, dict):
@@ -92,54 +92,118 @@ def Rels_assign(self, src, create_clones=True):
 
   try:
     for rel in src:
-      if rel.is_static:
-        self.add_relationship(rel.reltype, rel._target, rel.rId, rel.is_external)
+      if cloner:
+        self.attach(cloner(rel))
       else:
-        pass
+        self.append(rel)
 
   except TypeError:
-    pass
+    raise
 
   return self
 
 Rels.assign = Rels_assign
 
 
+class Cloner:
+  def __init__(self, parts):
+    self._parts = parts
+    self._idx = {}
+    self._cache = set()
+
+  def __contains__(self, part):
+    return part in self._cache
+
+  def __add__(self, part):
+    self._cache.add(part)
+    return self
+
+  def __call__(self, rel):
+    target = rel.target_part
+    uri = target.partname
+    if not rel.is_static and uri.idx is not None:
+      tmpl = re.sub(r'^(.+?)(\d+)(\.\w+)$', r'\1%d\3', uri)
+      if tmpl not in self._idx:
+        max_idx = 0
+        for part in self._parts:
+          if part.matches(tmpl, max_idx):
+            max_idx = part.partname.idx
+        self._idx[tmpl] = max_idx
+
+      self._idx[tmpl] += 1
+      uri = PackURI(tmpl % self._idx[tmpl])
+      target = target.clone(uri, self)
+
+    return Rel(rel.rId, rel.reltype, target, rel._baseURI, rel.is_external)
+
+
+def Part_matches(self, tmpl, max_idx=None):
+  uri = self.partname
+  idx = uri.idx
+
+  if max_idx is not None:
+    return False if idx is None else uri == tmpl % idx and max_idx < idx
+
+  return uri == tmpl if idx is None else uri == tmpl % idx
+
+Part.matches = Part_matches
+
+
+def Part_is_similar(self, other):
+  if self is None:
+    return other is None
+
+  if other is None:
+    return False
+
+  if not isinstance(other, Part):
+    return False
+
+  if self.partname.baseURI != other.partname.baseURI:
+    return False
+
+  if self.content_type != other.content_type:
+    return False
+
+  if self.blob != other.blob:
+    return False
+
+  if self.package != other.package:
+    return False
+
+  return True
+
+Part.is_similar = Part_is_similar
+
+
+def Rels_append(self, rel):
+  if rel is None:
+    return False
+
+  self.add_relationship(rel.reltype, rel._target, rel.rId, rel.is_external)
+  return True
+
+Rels.append = Rels_append
+
+
+def Rels_attach(self, rel):
+  target = rel.target_part
+
+  self[rel.rId] = rel
+  if not rel.is_external:
+    self._target_parts_by_rId[rel.rId] = target
+
+  return target
+
+Rels.attach = Rels_attach
+
+
 @property
 def Rel_is_static(self):
   return self.reltype in static_rels
 
-static_rels = {
-  RT.IMAGE, RT.MEDIA, RT.VIDEO, RT.SLIDE_LAYOUT
-}
-
 Rel.is_static = Rel_is_static
 
-
-@property
-def SlidePart_charts(self):
-  return self.parts_related_by(RT.CHART)
-
-SlidePart.charts = SlidePart_charts
-
-
-def SlidePart_parts_related_by(self, reltype):
-  res = {}
-  for rId, rel in self.rels.items():
-    if rel.reltype == reltype:
-      res[rId] = rel.target_part
-
-  return res
-
-SlidePart.parts_related_by = SlidePart_parts_related_by
-
-
-def iter_ids(self):
-  for e in xpath(self, '//@id'):
-    yield int(e)
-
-def xpath(self, expr):
-  return self.element.xpath(expr)
 
 def Rels_eq(self, other):
   if self is None:
@@ -177,7 +241,7 @@ def Rel_eq(self, other):
   if self.reltype != other.reltype:
     return False
 
-  if self._target != other._target:
+  if not self.target_part.is_similar(other.target_part):
     return False
 
   if self.is_external != other.is_external:
