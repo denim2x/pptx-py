@@ -11,15 +11,15 @@ except ImportError:
 
 import posixpath
 
-from pptx.slide import Slide, Slides
-from pptx.parts.slide import SlidePart
-from pptx.opc.packuri import PackURI
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
-from pptx.parts.presentation import PresentationPart  #FIXME: Attach *duplicate()* here also
 from pptx.opc.package import _Relationship as Rel, RelationshipCollection as Rels
+from pptx.parts.presentation import PresentationPart  #FIXME: Attach *duplicate()* here also
+from pptx.parts.chart import ChartPart
+from pptx.parts.slide import SlidePart
+from pptx.slide import Slide, Slides
 
 
-def duplicate(self, slide_index=None, slide_id=None, new_ids=False):
+def Slides_duplicate(self, slide_index=None, slide_id=None, new_ids=False):
   """
   Creates an _identical_ copy of the |Slide| at *slide_index* (or *slide_id*) 
   by cloning its corresponding |SlidePart| instance, then inserts it into *self*.
@@ -51,7 +51,8 @@ def duplicate(self, slide_index=None, slide_id=None, new_ids=False):
 
   return slide_part.slide
 
-Slides.duplicate = duplicate
+Slides.duplicate = Slides_duplicate
+
 
 def clone(self, uri=None, base_id=None):
   """
@@ -71,9 +72,11 @@ def clone(self, uri=None, base_id=None):
 
   return part
 
-def Rels_assign(self, src):
+
+def Rels_assign(self, src, create_clones=True):
   """
-  Assigns all |_Relationship| instances from *src* to *self*
+  Assigns all |_Relationship| instances from *src* to *self*; optionally
+  creates clones of all non-static related parts, according to *create_clones*
   """
   if src is None:
     return self
@@ -85,15 +88,51 @@ def Rels_assign(self, src):
     src = src.rels
 
   if isinstance(src, dict):
-    for rId, rel in src.items():
-      self.add_relationship(rel.reltype, rel._target, rId, rel.is_external)
-  else:
+    src = src.values()
+
+  try:
     for rel in src:
-      self.add_relationship(rel.reltype, rel._target, rel.rId, rel.is_external)
+      if rel.is_static:
+        self.add_relationship(rel.reltype, rel._target, rel.rId, rel.is_external)
+      else:
+        pass
+
+  except TypeError:
+    pass
 
   return self
 
 Rels.assign = Rels_assign
+
+
+@property
+def Rel_is_static(self):
+  return self.reltype in static_rels
+
+static_rels = {
+  RT.IMAGE, RT.MEDIA, RT.VIDEO, RT.SLIDE_LAYOUT
+}
+
+Rel.is_static = Rel_is_static
+
+
+@property
+def SlidePart_charts(self):
+  return self.parts_related_by(RT.CHART)
+
+SlidePart.charts = SlidePart_charts
+
+
+def SlidePart_parts_related_by(self, reltype):
+  res = {}
+  for rId, rel in self.rels.items():
+    if rel.reltype == reltype:
+      res[rId] = rel.target_part
+
+  return res
+
+SlidePart.parts_related_by = SlidePart_parts_related_by
+
 
 def iter_ids(self):
   for e in xpath(self, '//@id'):
