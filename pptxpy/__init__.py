@@ -253,20 +253,21 @@ class Cloner:
     return self
 
   def __call__(self, rel):
-    target = rel.target_part
-    uri = target.partname
-    if not rel.is_static and uri.idx is not None:
-      tmpl = uri.template
-      if tmpl not in self._idx:
-        max_idx = 0
-        for part in self._parts:
-          if part.matches(tmpl, max_idx):
-            max_idx = part.partname.idx
-        self._idx[tmpl] = max_idx
+    if not rel.is_external:
+      target = rel.target_part
+      uri = target.partname
+      if not rel.is_static and uri.idx is not None:
+        tmpl = uri.template
+        if tmpl not in self._idx:
+          max_idx = 0
+          for part in self._parts:
+            if part.matches(tmpl, max_idx):
+              max_idx = part.partname.idx
+          self._idx[tmpl] = max_idx
 
-      self._idx[tmpl] += 1
-      uri = PackURI(tmpl % self._idx[tmpl])
-      target = target.clone(uri, self)
+        self._idx[tmpl] += 1
+        uri = PackURI(tmpl % self._idx[tmpl])
+        target = target.clone(uri, self)
 
     return Rel(rel.rId, rel.reltype, target, rel._baseURI, rel.is_external)
 
