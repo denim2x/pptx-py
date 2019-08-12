@@ -60,11 +60,11 @@ def Part_clone(self, uri=None, cloner=None):
   
   Return value: The newly created |Part| instance.
   """
-  if uri is None:
-    uri = self.partname
+  if cloner is None:
+    return self._clone(uri)
 
   if self not in cloner:
-    part = self.load(uri, self.content_type, self.blob, self.package)
+    part = self._clone(uri)
     part.rels.assign(self, cloner + self)
     return part
 
@@ -73,10 +73,78 @@ def Part_clone(self, uri=None, cloner=None):
 Part.clone = Part_clone
 
 
+def Part_matches(self, tmpl, max_idx=None):
+  """
+  Performs pattern matching between *self.partname* and *tmpl*; optionally
+  checks if *max_idx < self.partname.idx* as well.
+
+  Return value: The Boolean result of the tests.
+  """
+  uri = self.partname
+  idx = uri.idx
+
+  if max_idx is not None:
+    return False if idx is None else uri == tmpl % idx and max_idx < idx
+
+  return uri == tmpl if idx is None else uri == tmpl % idx
+
+Part.matches = Part_matches
+
+
+def Part_is_similar(self, other):
+  """
+  Essentially performs shallow structural equality testing between
+  *self* and *other* - with the exception of *partname* which is 
+  tested for _similarity_ rather then _equality_.
+
+  Return value: The Boolean result of the tests.
+  """
+  if self is None:
+    return other is None
+
+  if other is None:
+    return False
+
+  if not isinstance(other, Part):
+    return False
+
+  if self.partname.is_similar(other.partname):
+    return False
+
+  if self.content_type != other.content_type:
+    return False
+
+  if self.blob != other.blob:
+    return False
+
+  if self.package != other.package:
+    return False
+
+  return True
+
+Part.is_similar = Part_is_similar
+
+
+def Part__clone(self, uri=None):
+  """
+  Creates a _shallow_ duplicate of *self*, optionally having *partname* assigned
+  the value of *uri* (if non-null), otherwise *self.partname*.
+
+  Return value: The newly created |Part| instance.
+  """
+  if uri is None:
+    uri = self.partname
+  return self.load(uri, self.content_type, self.blob, self.package)
+
+Part._clone = Part__clone
+
+
 def Rels_assign(self, src, cloner=None):
   """
   Assigns all |_Relationship| instances from *src* to *self*; optionally
-  creates clones of all non-static target parts (when *cloner* is non-null)
+  creates clones of all non-static target parts (when *cloner* is non-null).
+
+  Return value: *self*.
   """
   if src is None:
     return self
@@ -105,7 +173,73 @@ def Rels_assign(self, src, cloner=None):
 Rels.assign = Rels_assign
 
 
+def Rels_append(self, rel):
+  """
+  Creates a new |_Relationship| instance based on *rel* and inserts it into *self*.
+  
+  Return value: A Boolean value indicating whether *rel is None*.
+  """
+  if rel is None:
+    return False
+
+  self.add_relationship(rel.reltype, rel._target, rel.rId, rel.is_external)
+  return True
+
+Rels.append = Rels_append
+
+
+def Rels_attach(self, rel):
+  """
+  Inserts *rel* into *self*, performing additional necessary bindings.
+  
+  Return value: *rel.target_part*.
+  """
+  target = rel.target_part
+
+  self[rel.rId] = rel
+  if not rel.is_external:
+    self._target_parts_by_rId[rel.rId] = target
+
+  return target
+
+Rels.attach = Rels_attach
+
+
+def Rels_eq(self, other):
+  """
+  Performs structural equality testing between *self* and *other*.
+
+  Return value: The Boolean result of the tests.
+  """
+  if self is None:
+    return other is None
+
+  if other is None:
+    return False
+
+  if not isinstance(other, dict):
+    return False
+
+  if len(self) != len(other):
+    return False
+
+  for rId, rel in self.items():
+    if not rId in other:
+      return False
+    if rel != other[rId]:
+      return False
+
+  return True
+
+Rels.__eq__ = Rels_eq
+
+
 class Cloner:
+  """
+  Utility class for handling the cloning process for a given |_Relationship| 
+  instance; uses a *_cache* to store all cloned |Part| instances - thus 
+  avoiding _infinite recursion_.
+  """
   def __init__(self, parts):
     self._parts = parts
     self._idx = {}
@@ -122,7 +256,7 @@ class Cloner:
     target = rel.target_part
     uri = target.partname
     if not rel.is_static and uri.idx is not None:
-      tmpl = re.sub(r'^(.+?)(\d+)(\.\w+)$', r'\1%d\3', uri)
+      tmpl = uri.template
       if tmpl not in self._idx:
         max_idx = 0
         for part in self._parts:
@@ -137,65 +271,11 @@ class Cloner:
     return Rel(rel.rId, rel.reltype, target, rel._baseURI, rel.is_external)
 
 
-def Part_matches(self, tmpl, max_idx=None):
-  uri = self.partname
-  idx = uri.idx
+@property
+def PackURI_template(self):
+  return re.sub(r'^(.+?)(\d+)(\.\w+)$', r'\1%d\3', self)
 
-  if max_idx is not None:
-    return False if idx is None else uri == tmpl % idx and max_idx < idx
-
-  return uri == tmpl if idx is None else uri == tmpl % idx
-
-Part.matches = Part_matches
-
-
-def Part_is_similar(self, other):
-  if self is None:
-    return other is None
-
-  if other is None:
-    return False
-
-  if not isinstance(other, Part):
-    return False
-
-  if self.partname.baseURI != other.partname.baseURI:
-    return False
-
-  if self.content_type != other.content_type:
-    return False
-
-  if self.blob != other.blob:
-    return False
-
-  if self.package != other.package:
-    return False
-
-  return True
-
-Part.is_similar = Part_is_similar
-
-
-def Rels_append(self, rel):
-  if rel is None:
-    return False
-
-  self.add_relationship(rel.reltype, rel._target, rel.rId, rel.is_external)
-  return True
-
-Rels.append = Rels_append
-
-
-def Rels_attach(self, rel):
-  target = rel.target_part
-
-  self[rel.rId] = rel
-  if not rel.is_external:
-    self._target_parts_by_rId[rel.rId] = target
-
-  return target
-
-Rels.attach = Rels_attach
+PackURI.template = PackURI_template
 
 
 @property
@@ -204,29 +284,6 @@ def Rel_is_static(self):
 
 Rel.is_static = Rel_is_static
 
-
-def Rels_eq(self, other):
-  if self is None:
-    return other is None
-
-  if other is None:
-    return False
-
-  if not isinstance(other, Rels):
-    return False
-
-  if len(self) != len(other):
-    return False
-
-  for rId, rel in self.items():
-    if not rId in other:
-      return False
-    if rel != other[rId]:
-      return False
-
-  return True
-
-Rels.__eq__ = Rels_eq
 
 def Rel_eq(self, other):
   if self is None:
@@ -250,3 +307,16 @@ def Rel_eq(self, other):
   return True
 
 Rel.__eq__ = Rel_eq
+
+
+def PackURI_is_similar(self, other):
+  if self is None:
+    return other is None
+
+  if other is None:
+    return False
+
+  if not isinstance(other, str):
+    return False
+
+PackURI.is_similar = PackURI_is_similar

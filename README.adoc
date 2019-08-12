@@ -1,0 +1,77 @@
+= pptx-py
+:travis: https://travis-ci.org/denim2x/pptx-py.svg?branch=master
+image::{travis}[link="https://travis-ci.org/denim2x/pptx-py"]
+
+A Python library with various tools for enhancing http://github.com/scanny/python-pptx[python-pptx].
+
+== Usage
+[source,python]
+----
+import pptxpy
+----
+
+This `import` attaches several methods to certain classes from _python-pptx_,
+implementing additional functionality (like _cloning_).
+
+
+== Documentation
+`Slides.duplicate(self, [slide_index: int], [slide_id: str])`::
+Creates an _identical_ copy of the `Slide` instance (given by either `slide_index`
+_or_ `slide_id`) by cloning its corresponding `SlidePart` instance, then appends
+it to `self`.
+_Return value_: The newly created `Slide` instance.
+
+`Part.clone(self, [uri: PackURI], [cloner: Cloner])`::
+Creates an exact copy of this `Part` instance. The new instance's `partname`
+becomes `uri` if non-null, otherwise `self.partname`. The cloning process is
+performed recursively on all related parts, with the exception of the already
+cloned parts (stored in `+cloner._cache+`); however, if `cloner is None` then
+`self` is copied alone, without recursion.
+_Return value_: The newly created `Part` instance.
+
+`Part.matches(self, tmpl: str, [max_idx: int])`::
+Performs pattern matching between `self.partname` and `tmpl`; optionally
+checks if `max_idx < self.partname.idx` as well.
+_Return value_: The Boolean result of the tests.
+
+`Part.is_similar(self, other)`::
+Essentially performs shallow structural equality testing between `self` and
+`other` - with the exception of `partname` which is tested for _similarity_
+rather then _equality_.
+_Return value_: The Boolean result of the tests.
+
+`Part._clone(self, [uri: PackURI])`::
+Creates a _shallow_ duplicate of `self`, optionally having `partname` assigned
+the value of `uri` (if non-null), otherwise `self.partname`.
+_Return value_: The newly created `Part` instance.
+
+`RelationshipCollection.assign(self, src: PartElementProxy|Part|dict|list|iter, [cloner: Cloner])`::
+Assigns all `_Relationship` instances from `src` to `self`; optionally creates
+clones of all non-static target parts (when `cloner` is non-null).
+__Return value__: `self`.
+
+`RelationshipCollection.append(self, rel: _Relationship)`::
+Creates a new `_Relationship` instance based on `rel` and inserts it into `self`.
+__Return value__: A Boolean value indicating whether `rel is None`.
+
+`RelationshipCollection.attach(self, rel: _Relationship)`::
+Inserts `rel` into `self`, performing additional necessary bindings.
+_Return value_: `rel.target_part`.
+
+`RelationshipCollection.__eq__(self, other)`::
+Performs structural equality testing between `self` and `other`.
+_Return value_: The Boolean result of the tests.
+
+`class Cloner`::
+Utility class for handling the cloning process for a given `_Relationship` instance;
+uses a `_cache` to store all cloned `Part` instances - thus avoiding __infinite recursion__.
+
+
+== Dependencies
+_pptx-py_ does not currenly depend (explicitly) on any external packages;
+however, one has to ensure the presence of _python-pptx_ in order to work
+with this library.
+
+
+== License
+https://github.com/denim2x/pptx-py/blob/master/LICENSE[MIT License]
