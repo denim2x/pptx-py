@@ -15,11 +15,13 @@ from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import _Relationship as Rel, RelationshipCollection as Rels, Part
 from pptx.opc.packuri import PackURI
 from pptx.shared import PartElementProxy
-from pptx.slide import Slides
+from pptx.slide import Slide, Slides
 
 static_rels = {
-  RT.IMAGE, RT.MEDIA, RT.VIDEO, RT.SLIDE_LAYOUT, RT.NOTES_MASTER, RT.SLIDE_MASTER
+  RT.SLIDE, RT.IMAGE, RT.MEDIA, RT.VIDEO, RT.NOTES_MASTER, RT.SLIDE_MASTER
 }
+
+tmpl_re = re.compile(r"^(.+?)(\d+)?(\.\w+)?$")
 
 
 def Slides_duplicate(self, slide_index=None, slide_id=None):
@@ -73,25 +75,7 @@ def Part_clone(self, uri=None, cloner=None):
 Part.clone = Part_clone
 
 
-def Part_matches(self, tmpl, max_idx=None):
-  """
-  Performs pattern matching between *self.partname* and *tmpl*; optionally
-  checks if *max_idx < self.partname.idx* as well.
-
-  Return value: The Boolean result of the tests.
-  """
-  uri = self.partname
-  idx = uri.idx
-
-  if max_idx is not None:
-    return False if idx is None else uri == tmpl % idx and max_idx < idx
-
-  return uri == tmpl if idx is None else uri == tmpl % idx
-
-Part.matches = Part_matches
-
-
-def Part_is_similar(self, other):
+def Part_is_similar(self, other, rels=True):
   """
   Essentially performs shallow structural equality testing between
   *self* and *other* - with the exception of *partname* which is 
@@ -118,6 +102,9 @@ def Part_is_similar(self, other):
     return False
 
   if self.package != other.package:
+    return False
+
+  if rels and self.rels != other.rels:
     return False
 
   return True
@@ -192,20 +179,20 @@ def Rels_attach(self, rel):
   """
   Inserts *rel* into *self*, performing additional necessary bindings.
   
-  Return value: *rel.target_part*.
+  Return value: *rel.target_part* (or *rel.target_ref*, if *rel.is_external*).
   """
-  target = rel.target_part
-
   self[rel.rId] = rel
-  if not rel.is_external:
-    self._target_parts_by_rId[rel.rId] = target
+  if rel.is_external:
+    return rel.target_ref
 
+  target = rel.target_part
+  self._target_parts_by_rId[rel.rId] = target
   return target
 
 Rels.attach = Rels_attach
 
 
-def Rels_eq(self, other):
+def Rels_eq(self, other, rels=True):
   """
   Performs structural equality testing between *self* and *other*.
 
@@ -226,12 +213,20 @@ def Rels_eq(self, other):
   for rId, rel in self.items():
     if not rId in other:
       return False
-    if rel != other[rId]:
+    #if rel != other[rId]:
+    if not rel.equals(other[rId], rels):
       return False
 
   return True
 
 Rels.__eq__ = Rels_eq
+Rels.equals = Rels_eq
+
+
+def Rels_pprint(self):
+  return '%s{\n  %s\n}' % (Rels.__name__, '\n'.join('%s: %s' % (rId, rel.pprint()) for rId, rel in self.items()))
+
+Rels.pprint = Rels_pprint
 
 
 class Cloner:
@@ -256,27 +251,23 @@ class Cloner:
     if not rel.is_external:
       target = rel.target_part
       uri = target.partname
-      if not rel.is_static and uri.idx is not None:
+      if not rel.is_static:
         tmpl = uri.template
         if tmpl not in self._idx:
           max_idx = 0
           for part in self._parts:
-            if part.matches(tmpl, max_idx):
-              max_idx = part.partname.idx
+            if not uri.is_similar(part.partname):
+              continue
+            max_idx = max(max_idx, part.partname.index)
           self._idx[tmpl] = max_idx
 
         self._idx[tmpl] += 1
         uri = PackURI(tmpl % self._idx[tmpl])
         target = target.clone(uri, self)
+    else:
+      target = rel.target_ref
 
     return Rel(rel.rId, rel.reltype, target, rel._baseURI, rel.is_external)
-
-
-@property
-def PackURI_template(self):
-  return re.sub(r'^(.+?)(\d+)(\.\w+)$', r'\1%d\3', self)
-
-PackURI.template = PackURI_template
 
 
 @property
@@ -286,7 +277,7 @@ def Rel_is_static(self):
 Rel.is_static = Rel_is_static
 
 
-def Rel_eq(self, other):
+def Rel_eq(self, other, rels=True):
   if self is None:
     return other is None
 
@@ -299,7 +290,7 @@ def Rel_eq(self, other):
   if self.reltype != other.reltype:
     return False
 
-  if not self.target_part.is_similar(other.target_part):
+  if not self.target_part.is_similar(other.target_part, rels):
     return False
 
   if self.is_external != other.is_external:
@@ -308,6 +299,34 @@ def Rel_eq(self, other):
   return True
 
 Rel.__eq__ = Rel_eq
+Rel.equals = Rel_eq
+
+
+def Rel_pprint(self):
+  reltype = posixpath.basename(self.reltype)
+  target = self.target.target_ref if self.is_external else self.target_part.partname
+  return '%s{ reltype="…/%s" target="%s" baseURI="%s" is_external=%s }' % (
+    Rel.__name__, reltype, target, self._baseURI, self.is_external
+  )
+
+Rel.pprint = Rel_pprint
+
+
+@property
+def PackURI_index(self):
+  if not hasattr(self, '_index'):
+    self._index = int(tmpl_re.match(self).group(2) or '0')
+
+  return self._index
+
+PackURI.index = PackURI_index
+
+
+@property
+def PackURI_template(self):
+  return tmpl_re.sub(r'\1%d\3', self)
+
+PackURI.template = PackURI_template
 
 
 def PackURI_is_similar(self, other):
@@ -320,4 +339,24 @@ def PackURI_is_similar(self, other):
   if not isinstance(other, str):
     return False
 
+  if not isinstance(other, PackURI):
+    other = PackURI(other)
+  
+  return self.template == other.template
+
 PackURI.is_similar = PackURI_is_similar
+
+
+def Slide_is_similar(self, other):
+  if self is None:
+    return other is None
+
+  if other is None:
+    return False
+
+  if not isinstance(other, Slide):
+    return False
+
+  return self.part.is_similar(other.part)
+
+Slide.is_similar = Slide_is_similar

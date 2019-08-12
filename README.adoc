@@ -29,11 +29,6 @@ cloned parts (stored in `+cloner._cache+`); however, if `cloner is None` then
 `self` is copied alone, without recursion.
 _Return value_: The newly created `Part` instance.
 
-`Part.matches(self, tmpl: str, [max_idx: int])`::
-Performs pattern matching between `self.partname` and `tmpl`; optionally
-checks if `max_idx < self.partname.idx` as well.
-_Return value_: The Boolean result of the tests.
-
 `Part.is_similar(self, other)`::
 Essentially performs shallow structural equality testing between `self` and
 `other` - with the exception of `partname` which is tested for _similarity_
