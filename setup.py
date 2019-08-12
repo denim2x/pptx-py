@@ -2,26 +2,29 @@
 
 import os
 import re
+import glob
 
 from setuptools import find_packages, setup
 
 
 def ascii_bytes_from(path, *paths):
-    """
-    Return the ASCII characters in the file specified by *path* and *paths*.
-    The file path is determined by concatenating *path* and any members of
-    *paths* with a directory separator in between.
-    """
-    file_path = os.path.join(path, *paths)
-    with open(file_path) as f:
-        ascii_bytes = f.read()
-    return ascii_bytes
+  """
+  Return the ASCII characters in the file specified by *path* and *paths*.
+  The file path is determined by concatenating *path* and any members of
+  *paths* with a directory separator in between.
+  """
+  file_paths = glob.glob(os.path.join(path, *paths))
+  if len(file_paths) > 1:
+    return
+  with open(file_paths[0]) as f:
+    ascii_bytes = f.read()
+  return ascii_bytes
 
 
 # read required text from files
 thisdir = os.path.dirname(__file__)
 init_py = ascii_bytes_from(thisdir, "pptxpy", "__init__.py")
-readme = ascii_bytes_from(thisdir, "README.md")
+readme = ascii_bytes_from(thisdir, "README.*")
 license = ascii_bytes_from(thisdir, "LICENSE")
 
 # Read the version from pptx.__version__ without importing the package
