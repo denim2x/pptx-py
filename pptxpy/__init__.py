@@ -18,6 +18,7 @@ from pptx.opc.packuri import PackURI
 from pptx.oxml import parse_xml
 from pptx.shared import PartElementProxy
 from pptx.slide import Slide, Slides
+from pptx.oxml.ns import NamespacePrefixedTag, qn
 
 Rels._static = {
   RT.SLIDE, RT.IMAGE, RT.MEDIA, RT.VIDEO, RT.NOTES_MASTER#, RT.SLIDE_MASTER
@@ -39,6 +40,7 @@ _void = set()
 
 tmpl_re = re.compile(r"^(.+?)(\d+)?(\.\w+)?$")
 name_re = re.compile(r"^(?:(\d+)_)?")
+idLstItem_tag = NamespacePrefixedTag('p:sldLayoutId').clark_name
 
 
 def Slides_duplicate(self, slide_index=None, slide_id=None, slide_master=False):
@@ -61,10 +63,19 @@ def Slides_duplicate(self, slide_index=None, slide_id=None, slide_master=False):
   
   part = self.part
   parts = part.package.parts
-  if not hasattr(part, '_cache'):
-    part._cache = {}
   prs = self.parent
-  cloner = Cloner(parts, part._cache, slide_master)
+  if not hasattr(prs.part, '_cache'):
+    prs.part._cache = {}
+
+  if not hasattr(prs.part, '_max_sldId'):
+    max_sldId = 0
+    if len(prs.slide_masters) > 0:
+      master = prs.slide_masters[-1]
+      layout_ids = master.slide_layouts._sldLayoutIdLst
+      if len(layout_ids) > 0:
+        max_sldId = int(layout_ids[-1].attrib['id'])
+    prs.part._max_sldId = max_sldId
+  cloner = Cloner(prs.part, slide_master)
   # cloner = Cloner(parts, part._cache, [prs.slide_masters[m].part if isinstance(m, int) else m for m in slide_masters] if slide_masters else None)
   slide_part = slide.part.clone(part._next_slide_partname, cloner)
 
@@ -237,16 +248,17 @@ class Cloner:
   instance; uses a *_cache* to store all cloned |Part| instances - thus 
   avoiding _infinite recursion_.
   """
-  def __init__(self, parts, cache=None, slide_master=False):
+  def __init__(self, prs, slide_master=False):
     self._idx = {}
-    for part in parts:
+    for part in prs.package.parts:
       uri = part.partname
       tmpl = uri.template
       self._idx[tmpl] = max(self._idx.get(tmpl, 0), uri.index)
     self._cache = set()
-    self._gcache = cache
+    self._gcache = prs._cache
     # self._slide_masters = set(slide_masters) if slide_masters is not None else None
     self._slide_master = slide_master
+    self._prs = prs
 
   def __setitem__(self, dest, src):
     if src is None:
@@ -313,9 +325,16 @@ class Cloner:
           target = self._gcache[target]
         elif not rel.is_static and (target.content_type != CT.PML_SLIDE_MASTER or self._slide_master):
           target = self._clone_part(target)
+          if target.content_type == CT.PML_SLIDE_MASTER:
+            for item in target.slide_master.slide_layouts._sldLayoutIdLst.iterchildren():
+              item.delete()
 
         if target.content_type == CT.PML_SLIDE_MASTER and ct == CT.PML_SLIDE_LAYOUT and src in self._gcache:
-          target.rels.get_or_add(RT.SLIDE_LAYOUT, self._gcache[src])
+          r = target.rels.get_or_add(RT.SLIDE_LAYOUT, self._gcache[src])
+          id_list = target.slide_master.slide_layouts._sldLayoutIdLst
+          self._prs._max_sldId += 1
+          item = id_list.makeelement(idLstItem_tag, { 'id': str(self._prs._max_sldId), qn('r:id'): r.rId }, id_list.nsmap)
+          id_list.append(item)
 
     return Rel(rel.rId, rel.reltype, target, rel._baseURI, rel.is_external)
 

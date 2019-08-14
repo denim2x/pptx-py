@@ -32,9 +32,11 @@ def test_duplicate(i, muted=False):
   l = s.slide_layout.part
   m = l.slide_master
   c = prs.slides.duplicate(i, slide_master=m is slide_master1)
+  assert c.slide_layout.part is not l, "Slide #%d's SlideLayout wasn't cloned" % i
   if m is slide_master1:
-    assert c.slide_layout.part is not l, "Slide #%d's SlideLayout wasn't cloned" % i
     assert c.slide_layout.part.slide_master is not m, "Slide #%d's SlideMaster wasn't cloned" % i
+  else:
+    assert c.slide_layout.part.slide_master is m, "Slide #%d's SlideMaster is not OK" % i
 
   if muted:
     pass#return
