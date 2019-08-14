@@ -1,5 +1,6 @@
 import os
 from pptx import Presentation
+from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 
 dirname = os.path.dirname(__file__)
 try:
@@ -10,10 +11,12 @@ except ImportError:
   import pptxpy
 
 prs = None
+slide_master1 = None
 
 def setup(path):
-  global prs
+  global prs, slide_master1
   prs = Presentation(normpath(path))
+  slide_master1 = prs.slide_masters[0]
   num = len(prs.slides)
   for i in range(num):
     test_duplicate(i, True)
@@ -24,9 +27,14 @@ def setup(path):
     prs.save(path)
 
 def test_duplicate(i, muted=False):
-  global prs
+  global prs, slide_master1
   s, num = prs.slides[i], len(prs.slides)
-  c = prs.slides.duplicate(i)
+  l = s.slide_layout.part
+  m = l.slide_master
+  c = prs.slides.duplicate(i, slide_master=m is slide_master1)
+  if m is slide_master1:
+    assert c.slide_layout.part is not l, "Slide #%d's SlideLayout wasn't cloned" % i
+    assert c.slide_layout.part.slide_master is not m, "Slide #%d's SlideMaster wasn't cloned" % i
 
   if muted:
     pass#return
@@ -38,7 +46,7 @@ def test_duplicate(i, muted=False):
   assert sp.partname.is_similar(cp.partname)
   assert sp.content_type == cp.content_type
   assert sp.blob == cp.blob
-  assert sp.package == cp.package
+  assert sp.package == cp.package          ;return
   assert sp.rels.equals(cp.rels, False)
 
   return

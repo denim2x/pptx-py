@@ -40,11 +40,6 @@ Creates a _shallow_ duplicate of `self`, optionally having `partname` assigned
 the value of `uri` (if non-null), otherwise `self.partname`.
 _Return value_: The newly created `Part` instance.
 
-`RelationshipCollection.assign(self, src: PartElementProxy|Part|dict|list|iter, [cloner: Cloner])`::
-Assigns all `_Relationship` instances from `src` to `self`; optionally creates
-clones of all non-static target parts (when `cloner` is non-null).
-__Return value__: `self`.
-
 `RelationshipCollection.append(self, rel: _Relationship)`::
 Creates a new `_Relationship` instance based on `rel` and inserts it into `self`.
 __Return value__: A Boolean value indicating whether `rel is None`.

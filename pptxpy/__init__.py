@@ -11,20 +11,37 @@ except ImportError:
 
 import posixpath, re
 
-from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+from pptx.opc.constants import RELATIONSHIP_TYPE as RT, CONTENT_TYPE as CT
+from pptx.opc.oxml import serialize_part_xml as dump_xml
 from pptx.opc.package import _Relationship as Rel, RelationshipCollection as Rels, Part
 from pptx.opc.packuri import PackURI
+from pptx.oxml import parse_xml
 from pptx.shared import PartElementProxy
 from pptx.slide import Slide, Slides
 
-static_rels = {
-  RT.SLIDE, RT.IMAGE, RT.MEDIA, RT.VIDEO, RT.NOTES_MASTER, RT.SLIDE_MASTER
+Rels._static = {
+  RT.SLIDE, RT.IMAGE, RT.MEDIA, RT.VIDEO, RT.NOTES_MASTER#, RT.SLIDE_MASTER
 }
 
+Part._cached = {
+  CT.PML_SLIDE_MASTER, CT.PML_SLIDE_LAYOUT
+}
+
+Rels._restricted = {
+  RT.SLIDE_MASTER: { CT.PML_SLIDE_LAYOUT }
+}
+
+Part._closed = {
+  CT.PML_SLIDE_MASTER: { RT.SLIDE_LAYOUT }
+}
+
+_void = set()
+
 tmpl_re = re.compile(r"^(.+?)(\d+)?(\.\w+)?$")
+name_re = re.compile(r"^(?:(\d+)_)?")
 
 
-def Slides_duplicate(self, slide_index=None, slide_id=None):
+def Slides_duplicate(self, slide_index=None, slide_id=None, slide_master=False):
   """
   Creates an _identical_ copy of the |Slide| instance (given by either *slide_index*
   _or_ *slide_id*) by cloning its corresponding |SlidePart| instance, then appends
@@ -44,7 +61,11 @@ def Slides_duplicate(self, slide_index=None, slide_id=None):
   
   part = self.part
   parts = part.package.parts
-  cloner = Cloner(parts)
+  if not hasattr(part, '_cache'):
+    part._cache = {}
+  prs = self.parent
+  cloner = Cloner(parts, part._cache, slide_master)
+  # cloner = Cloner(parts, part._cache, [prs.slide_masters[m].part if isinstance(m, int) else m for m in slide_masters] if slide_masters else None)
   slide_part = slide.part.clone(part._next_slide_partname, cloner)
 
   rId = part.relate_to(slide_part, RT.SLIDE)
@@ -67,7 +88,7 @@ def Part_clone(self, uri=None, cloner=None):
 
   if self not in cloner:
     part = self._clone(uri)
-    part.rels.assign(self, cloner + self)
+    cloner[part] = self
     return part
 
   return self
@@ -112,6 +133,13 @@ def Part_is_similar(self, other, rels=True):
 Part.is_similar = Part_is_similar
 
 
+@property
+def Part_basename(self):
+  return posixpath.basename(self.partname)
+
+Part.basename = Part_basename
+
+
 def Part__clone(self, uri=None):
   """
   Creates a _shallow_ duplicate of *self*, optionally having *partname* assigned
@@ -121,43 +149,17 @@ def Part__clone(self, uri=None):
   """
   if uri is None:
     uri = self.partname
-  return self.load(uri, self.content_type, self.blob, self.package)
+  
+  blob = self.blob  
+  if self.content_type == CT.OFC_THEME:
+    xml = parse_xml(self.blob)
+    name = xml.attrib['name']
+    xml.attrib['name'] = name_re.sub(lambda m: "%d_" % (int(m.group(1) or '0') + 1), name)
+    blob = dump_xml(xml)
+  
+  return self.load(uri, self.content_type, blob, self.package)
 
 Part._clone = Part__clone
-
-
-def Rels_assign(self, src, cloner=None):
-  """
-  Assigns all |_Relationship| instances from *src* to *self*; optionally
-  creates clones of all non-static target parts (when *cloner* is non-null).
-
-  Return value: *self*.
-  """
-  if src is None:
-    return self
-
-  if isinstance(src, PartElementProxy):
-    src = src.part
-
-  if isinstance(src, Part):
-    src = src.rels
-
-  if isinstance(src, dict):
-    src = src.values()
-
-  try:
-    for rel in src:
-      if cloner:
-        self.attach(cloner(rel))
-      else:
-        self.append(rel)
-
-  except TypeError:
-    raise
-
-  return self
-
-Rels.assign = Rels_assign
 
 
 def Rels_append(self, rel):
@@ -235,44 +237,104 @@ class Cloner:
   instance; uses a *_cache* to store all cloned |Part| instances - thus 
   avoiding _infinite recursion_.
   """
-  def __init__(self, parts):
-    self._parts = parts
+  def __init__(self, parts, cache=None, slide_master=False):
     self._idx = {}
+    for part in parts:
+      uri = part.partname
+      tmpl = uri.template
+      self._idx[tmpl] = max(self._idx.get(tmpl, 0), uri.index)
     self._cache = set()
+    self._gcache = cache
+    # self._slide_masters = set(slide_masters) if slide_masters is not None else None
+    self._slide_master = slide_master
+
+  def __setitem__(self, dest, src):
+    if src is None:
+      return
+
+    part = None
+    #content_type = None
+    if isinstance(src, Part):
+      if src.content_type in Part._cached:
+        self._gcache[src] = dest
+      else:
+        self._cache.add(src)
+      part = src
+      #content_type = src.content_type
+
+    rels = self._get_rels(src)
+    if isinstance(rels, dict):
+      rels = rels.values()
+    
+    if rels is None:
+      return
+
+    dest = self._get_rels(dest)
+    ct = part.content_type if part else None
+    try:
+      for rel in rels:
+        if rel.reltype in Part._closed.get(ct, _void):
+          continue
+        dest.attach(self._clone(rel, part))
+
+    except TypeError:
+      pass
+
+  @classmethod
+  def _get_rels(cls, self):
+    rels = self
+
+    if isinstance(self, PartElementProxy):
+      rels = self.part
+
+    if isinstance(self, Part):
+      rels = self.rels
+
+    return rels
 
   def __contains__(self, part):
     return part in self._cache
 
-  def __add__(self, part):
-    self._cache.add(part)
-    return self
-
-  def __call__(self, rel):
-    if not rel.is_external:
-      target = rel.target_part
-      uri = target.partname
-      if not rel.is_static:
-        tmpl = uri.template
-        if tmpl not in self._idx:
-          max_idx = 0
-          for part in self._parts:
-            if not uri.is_similar(part.partname):
-              continue
-            max_idx = max(max_idx, part.partname.index)
-          self._idx[tmpl] = max_idx
-
-        self._idx[tmpl] += 1
-        uri = PackURI(tmpl % self._idx[tmpl])
-        target = target.clone(uri, self)
-    else:
+  def _clone(self, rel, src):
+    ct = src.content_type if src else None
+    if rel.is_external:
       target = rel.target_ref
+    else:
+      target = rel.target_part
+      if self._cloneable(rel, ct):
+        # if target in self._slide_masters:
+        #   target = self._clone_part(target)
+        #   if ct == CT.PML_SLIDE_LAYOUT:
+        #     target.rels.get_or_add(RT.SLIDE_LAYOUT, src)
+
+        # elif not rel.is_static:
+        # if not rel.is_static and (target.content_type != CT.PML_SLIDE_MASTER or self._slide_masters is None or target in self._slide_masters):
+        if target in self._gcache:
+          target = self._gcache[target]
+        elif not rel.is_static and (target.content_type != CT.PML_SLIDE_MASTER or self._slide_master):
+          target = self._clone_part(target)
+
+        if target.content_type == CT.PML_SLIDE_MASTER and ct == CT.PML_SLIDE_LAYOUT and src in self._gcache:
+          target.rels.get_or_add(RT.SLIDE_LAYOUT, self._gcache[src])
 
     return Rel(rel.rId, rel.reltype, target, rel._baseURI, rel.is_external)
+
+  def _clone_part(self, part):
+    uri = part.partname
+    tmpl = uri.template
+    self._idx[tmpl] += 1
+    uri = PackURI(tmpl % self._idx[tmpl])
+    return part.clone(uri, self)
+
+  @classmethod
+  def _cloneable(cls, rel, content_type):
+    #return True
+    return content_type in Rels._restricted.get(rel.reltype, { content_type })
 
 
 @property
 def Rel_is_static(self):
-  return self.reltype in static_rels
+  return self.reltype in Rels._static
 
 Rel.is_static = Rel_is_static
 
