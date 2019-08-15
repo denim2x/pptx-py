@@ -19,27 +19,28 @@ def setup(path):
   slide_master1 = prs.slide_masters[0]
   num = len(prs.slides)
   for i in range(num):
-    test_duplicate(i, True)
+    test_duplicate(i)
 
   import sys
   if len(sys.argv) > 1:
     path = sys.argv[1]
     prs.save(path)
 
-def test_duplicate(i, muted=False):
+def test_duplicate(i):
   global prs, slide_master1
+  num_rels = len(prs.part.rels)
+
   s, num = prs.slides[i], len(prs.slides)
   l = s.slide_layout.part
   m = l.slide_master
+
   c = prs.slides.duplicate(i, slide_master=m is slide_master1)
   assert c.slide_layout.part is not l, "Slide #%d's SlideLayout wasn't cloned" % i
+
   if m is slide_master1:
     assert c.slide_layout.part.slide_master is not m, "Slide #%d's SlideMaster wasn't cloned" % i
   else:
     assert c.slide_layout.part.slide_master is m, "Slide #%d's SlideMaster is not OK" % i
-
-  if muted:
-    pass#return
 
   assert len(prs.slides) == num + 1
   assert prs.slides[-1] is c
@@ -48,10 +49,12 @@ def test_duplicate(i, muted=False):
   assert sp.partname.is_similar(cp.partname)
   assert sp.content_type == cp.content_type
   assert sp.blob == cp.blob
-  assert sp.package == cp.package          ;return
-  assert sp.rels.equals(cp.rels, False)
+  assert sp.package == cp.package
+  assert len(prs.part.rels) > num_rels    # FIXME
 
   return
+  assert sp.rels.equals(cp.rels, False)   # FIXME
+
   assert sp.rels == cp.rels, \
     'slides[%d].rels != slides[%d].rels (%s != %s)' % (
       i, num, sp.rels.pprint(), cp.rels.pprint()
