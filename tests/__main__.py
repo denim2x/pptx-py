@@ -10,23 +10,42 @@ except ImportError:
   sys.path.insert(0, os.path.normpath(os.path.join(dirname, '..')))
   import pptxpy
 
-prs = None
-slide_master1 = None
 
-def setup(path):
-  global prs, slide_master1
-  prs = Presentation(normpath(path))
-  slide_master1 = prs.slide_masters[0]
+def normpath(path):
+  return os.path.normpath(os.path.join(dirname, path))
+
+prs = Presentation(normpath('test_files/test_slides.pptx'))
+slide_master1 = prs.slide_masters[0]
+
+
+def test_duplicate():
+  global prs
   num = len(prs.slides)
+  assert num > 0, "Cannot test Presentation with no slides"
+
   for i in range(num):
-    test_duplicate(i)
+    _duplicate(i)
 
-  import sys
-  if len(sys.argv) > 1:
-    path = sys.argv[1]
-    prs.save(path)
 
-def test_duplicate(i):
+def test_remove():
+  global prs
+  num = len(prs.slides)
+  assert num > 0, "Cannot test Presentation with no slides"
+
+  s = prs.slides.remove(0)
+
+  assert len(prs.slides) == num - 1
+  assert len(prs.slides) == 0 or prs.slides[0] is not s
+
+test_remove()
+
+import sys
+if len(sys.argv) > 1:
+  path = sys.argv[1]
+  prs.save(path)
+
+
+def _duplicate(i):
   global prs, slide_master1
   num_rels = len(prs.part.rels)
 
@@ -69,9 +88,3 @@ def test_background():
 
   assert prs.slides[0].part.blob != c.part.blob
   assert c.background.fill.type == 1
-
-
-def normpath(path):
-  return os.path.normpath(os.path.join(dirname, path))
-
-setup('test_files/test_slides.pptx')

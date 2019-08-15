@@ -29,15 +29,9 @@ def Slides_duplicate(self, slide_index=None, slide_id=None, slide_master=False):
 
   Return value: the newly created |Slide| instance.
   """
-  slide = None
-
-  if slide_index is not None:
-      slide = self[slide_index]
-  elif slide_id is not None:
-      slide = self.get(slide_id)
-
+  slide = self._get(slide_index, slide_id)
   if slide is None:
-      return 
+    return 
   
   part = self.part
   parts = part.package.parts

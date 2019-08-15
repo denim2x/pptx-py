@@ -5,4 +5,5 @@
 __version__ = '0.0.1'
 
 from .cloning import Slides
+from .removal import Slides
 del Slides

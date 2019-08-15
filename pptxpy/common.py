@@ -24,6 +24,21 @@ name_re = re.compile(r"^(?:(\d+)_)?")
 idLstItem_tag = NamespacePrefixedTag('p:sldLayoutId').clark_name
 
 
+def Slides__get(self, slide_index=None, slide_id=None):
+  """
+  """
+  slide = None
+
+  if slide_index is not None:
+    slide = self[slide_index]
+  elif slide_id is not None:
+    slide = self.get(slide_id)
+
+  return slide
+
+Slides._get = Slides__get
+
+
 def Part_is_similar(self, other, rels=True):
   """
   Essentially performs shallow structural equality testing between
