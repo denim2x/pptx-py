@@ -4,6 +4,13 @@
 
 __version__ = '0.0.1'
 
-from .cloning import Slides
-from .removal import Slides
-del Slides
+from .common import _mount
+_mount()
+
+from .cloning import _mount
+_mount()
+
+from .removal import _mount
+_mount()
+
+del _mount

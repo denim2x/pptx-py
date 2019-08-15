@@ -36,8 +36,6 @@ def Slides__get(self, slide_index=None, slide_id=None):
 
   return slide
 
-Slides._get = Slides__get
-
 
 def Part_drop(self, part):
   dropped = set()
@@ -49,8 +47,6 @@ def Part_drop(self, part):
     del self.rels[rId]
 
   return dropped
-
-Part.drop = Part_drop
 
 
 def Part_is_similar(self, other, rels=True):
@@ -87,14 +83,10 @@ def Part_is_similar(self, other, rels=True):
 
   return True
 
-Part.is_similar = Part_is_similar
-
 
 @property
 def Part_basename(self):
   return posixpath.basename(self.partname)
-
-Part.basename = Part_basename
 
 
 def Rels_attach(self, rel):
@@ -110,8 +102,6 @@ def Rels_attach(self, rel):
   target = rel.target_part
   self._target_parts_by_rId[rel.rId] = target
   return target
-
-Rels.attach = Rels_attach
 
 
 def Rels_eq(self, other, rels=True):
@@ -141,20 +131,14 @@ def Rels_eq(self, other, rels=True):
 
   return True
 
-Rels.__eq__ = Rels_eq
-Rels.equals = Rels_eq
-
 
 def Rels_pprint(self):
   return '%s{\n  %s\n}' % (Rels.__name__, '\n'.join('%s: %s' % (rId, rel.pprint()) for rId, rel in self.items()))
 
-Rels.pprint = Rels_pprint
 
 @property
 def Rel_is_static(self):
   return self.reltype in Rels._static
-
-Rel.is_static = Rel_is_static
 
 
 def Rel_eq(self, other, rels=True):
@@ -178,9 +162,6 @@ def Rel_eq(self, other, rels=True):
 
   return True
 
-Rel.__eq__ = Rel_eq
-Rel.equals = Rel_eq
-
 
 def Rel_pprint(self):
   reltype = posixpath.basename(self.reltype)
@@ -188,8 +169,6 @@ def Rel_pprint(self):
   return '%s{ reltype="…/%s" target="%s" baseURI="%s" is_external=%s }' % (
     Rel.__name__, reltype, target, self._baseURI, self.is_external
   )
-
-Rel.pprint = Rel_pprint
 
 
 @property
@@ -199,14 +178,10 @@ def PackURI_index(self):
 
   return self._index
 
-PackURI.index = PackURI_index
-
 
 @property
 def PackURI_template(self):
   return tmpl_re.sub(r'\1%d\3', self)
-
-PackURI.template = PackURI_template
 
 
 def PackURI_is_similar(self, other):
@@ -224,8 +199,6 @@ def PackURI_is_similar(self, other):
   
   return self.template == other.template
 
-PackURI.is_similar = PackURI_is_similar
-
 
 def Slide_is_similar(self, other):
   if self is None:
@@ -239,4 +212,21 @@ def Slide_is_similar(self, other):
 
   return self.part.is_similar(other.part)
 
-Slide.is_similar = Slide_is_similar
+
+def _mount():
+  Slides._get = Slides__get
+  Part.drop = Part_drop
+  Part.is_similar = Part_is_similar
+  Part.basename = Part_basename
+  Rels.attach = Rels_attach
+  Rels.__eq__ = Rels_eq
+  Rels.equals = Rels_eq
+  Rels.pprint = Rels_pprint
+  Rel.is_static = Rel_is_static
+  Rel.__eq__ = Rel_eq
+  Rel.equals = Rel_eq
+  Rel.pprint = Rel_pprint
+  PackURI.index = PackURI_index
+  PackURI.template = PackURI_template
+  PackURI.is_similar = PackURI_is_similar
+  Slide.is_similar = Slide_is_similar

@@ -45,8 +45,6 @@ def Slides_duplicate(self, slide_index=None, slide_id=None, slide_master=False):
 
   return slide_part.slide
 
-Slides.duplicate = Slides_duplicate
-
 
 def Part_clone(self, uri=None, cloner=None):
   """
@@ -64,8 +62,6 @@ def Part_clone(self, uri=None, cloner=None):
     return part
 
   return self
-
-Part.clone = Part_clone
 
 
 def Part__clone(self, uri=None):
@@ -86,8 +82,6 @@ def Part__clone(self, uri=None):
     blob = dump_xml(xml)
   
   return self.load(uri, self.content_type, blob, self.package)
-
-Part._clone = Part__clone
 
 
 class Cloner:
@@ -210,3 +204,8 @@ class Cloner:
   def _cloneable(cls, rel, content_type):
     return content_type in Rels._restricted.get(rel.reltype, { content_type })
 
+
+def _mount():
+  Slides.duplicate = Slides_duplicate
+  Part.clone = Part_clone
+  Part._clone = Part__clone

@@ -27,4 +27,5 @@ def Slides_remove(self, slide_index=None, slide_id=None, sweep=True):
 
   return slide
 
-Slides.remove = Slides_remove
+def _mount():
+  Slides.remove = Slides_remove

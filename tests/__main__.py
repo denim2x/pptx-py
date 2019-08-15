@@ -37,13 +37,6 @@ def test_remove():
   assert len(prs.slides) == num - 1
   assert len(prs.slides) == 0 or prs.slides[0] is not s
 
-test_remove()
-
-import sys
-if len(sys.argv) > 1:
-  path = sys.argv[1]
-  prs.save(path)
-
 
 def _duplicate(i):
   global prs, slide_master1
@@ -88,3 +81,11 @@ def test_background():
 
   assert prs.slides[0].part.blob != c.part.blob
   assert c.background.fill.type == 1
+
+
+test_duplicate()
+
+import sys
+if len(sys.argv) > 1:
+  path = sys.argv[1]
+  prs.save(path)
