@@ -39,6 +39,20 @@ def Slides__get(self, slide_index=None, slide_id=None):
 Slides._get = Slides__get
 
 
+def Part_drop(self, part):
+  dropped = set()
+  for rel in self.rels.values():
+    if not rel.is_external and rel.target_part is part:
+      dropped.add(rel.rId)
+
+  for rId in dropped:
+    del self.rels[rId]
+
+  return dropped
+
+Part.drop = Part_drop
+
+
 def Part_is_similar(self, other, rels=True):
   """
   Essentially performs shallow structural equality testing between

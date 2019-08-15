@@ -3,31 +3,27 @@
 from .common import Slides
 
 
-def Slides_remove(self, slide_index=None, slide_id=None, erase=False):
+def Slides_remove(self, slide_index=None, slide_id=None, sweep=True):
   """
   """
   slide = self._get(slide_index, slide_id)
   if slide is None:
     return
 
-  part = slide.part
   prs = self.parent
 
-  dropped = set()
-  for rel in prs.part.rels.values():
-    if not rel.is_external and rel.target_part is part:
-      dropped.add(rel.rId)
-
-  _dropped = set()
+  dropped = prs.part.drop(slide.part)
+  sldIds = set()
   for item in self._sldIdLst:
     if item.rId in dropped:
-      _dropped.add(item)
+      sldIds.add(item)
 
-  for rId in dropped:
-    del prs.part.rels[rId]
-
-  for item in _dropped:
+  for item in sldIds:
     item.delete()
+
+  if sweep:
+    for s in self:
+      s.part.drop(slide.part)
 
   return slide
 
