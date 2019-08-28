@@ -9,20 +9,53 @@ import posixpath, re
 
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT, CONTENT_TYPE as CT
 from pptx.opc.oxml import serialize_part_xml as dump_xml
-from pptx.opc.package import _Relationship as Rel, RelationshipCollection as Rels, Part
+from pptx.opc.package import _Relationship as Rel, RelationshipCollection as Rels, Part, OpcPackage
 from pptx.opc.packuri import PackURI
 from pptx.oxml import parse_xml
 from pptx.shared import PartElementProxy
 from pptx.slide import Slide, Slides
 from pptx.oxml.ns import NamespacePrefixedTag, qn
-
+from pptx.presentation import Presentation
+from pptx.parts.presentation import PresentationPart
 
 _void = set()
 
 tmpl_re = re.compile(r"^(.+?)(\d+)?(\.\w+)?$")
 name_re = re.compile(r"^(?:(\d+)_)?")
-idLstItem_tag = NamespacePrefixedTag('p:sldLayoutId').clark_name
 
+_static = {
+  RT.SLIDE_LAYOUT, RT.IMAGE, RT.MEDIA, RT.VIDEO, RT.NOTES_MASTER, RT.SLIDE_MASTER
+}
+
+
+class Cache:
+  def __init__(self, package):
+    self._package = package
+    self._partnames = {}
+    self._parts = {}
+
+  def next_partname(self, tmpl):
+    if tmpl not in self._partnames:
+      self._partnames[tmpl] = self._package.next_partname(tmpl).index
+    else:
+      self._partnames[tmpl] += 1
+    return PackURI(tmpl % self._partnames[tmpl])
+
+  def __getitem__(self, model):
+    if model not in self._parts:
+      self._parts[model] = model(self._package, self)
+    return self._parts[model]
+
+
+def OpcPackage_getitem(self, cursor):
+  part, reltype = cursor
+  uri = part.partname
+  ct = part.content_type
+  if reltype not in _static:
+    return
+  for part in self.iter_parts():
+    if part.partname == uri and part.content_type == ct:
+      return part
 
 def Slides__get(self, slide_index=None, slide_id=None):
   """
@@ -36,6 +69,11 @@ def Slides__get(self, slide_index=None, slide_id=None):
 
   return slide
 
+def Slides_clear(self):
+  """
+  Removes all slides from *self*.
+  """
+  return self._sldIdLst.clear()
 
 def Part_drop(self, part):
   dropped = set()
@@ -44,15 +82,32 @@ def Part_drop(self, part):
       dropped.add(rel.rId)
 
   for rId in dropped:
-    del self.rels[rId]
+    self.drop_rel(rId)
+    # del self.rels[rId]
 
   return dropped
 
+def Part_drop_all(self, reltype, recursive=True):
+  dropped = set()
+  for rel in self.rels.values():
+    if rel.reltype == reltype:
+      dropped.add(rel.rId)
+
+  for rId in dropped:
+    rel = self.rels[rId]
+    if recursive and not rel.is_external:
+      for part in rel.target_part.related_parts:
+        self.drop(part)
+
+    self.drop_rel(rId)
+    # del self.rels[rId]
+
+  return dropped
 
 def Part_is_similar(self, other, rels=True):
   """
   Essentially performs shallow structural equality testing between
-  *self* and *other* - with the exception of *partname* which is 
+  *self* and *other* - with the exception of *partname* which is
   tested for _similarity_ rather then _equality_.
 
   Return value: The Boolean result of the tests.
@@ -92,7 +147,7 @@ def Part_basename(self):
 def Rels_attach(self, rel):
   """
   Inserts *rel* into *self*, performing additional necessary bindings.
-  
+
   Return value: *rel.target_part* (or *rel.target_ref*, if *rel.is_external*).
   """
   self[rel.rId] = rel
@@ -196,7 +251,7 @@ def PackURI_is_similar(self, other):
 
   if not isinstance(other, PackURI):
     other = PackURI(other)
-  
+
   return self.template == other.template
 
 
@@ -214,8 +269,11 @@ def Slide_is_similar(self, other):
 
 
 def _mount():
+  OpcPackage.__getitem__ = OpcPackage_getitem
   Slides._get = Slides__get
+  Slides.clear = Slides_clear
   Part.drop = Part_drop
+  Part.drop_all = Part_drop_all
   Part.is_similar = Part_is_similar
   Part.basename = Part_basename
   Rels.attach = Rels_attach
