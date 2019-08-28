@@ -41,10 +41,17 @@ class Cache:
       self._partnames[tmpl] += 1
     return PackURI(tmpl % self._partnames[tmpl])
 
+  @property
+  def package(self):
+    return self._package
+
   def __getitem__(self, model):
     if model not in self._parts:
-      self._parts[model] = model(self._package, self)
+      model(self)
     return self._parts[model]
+
+  def __setitem__(self, model, part):
+    self._parts[model] = part
 
 
 def OpcPackage_getitem(self, cursor):

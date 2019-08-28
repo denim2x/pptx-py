@@ -30,8 +30,7 @@ def Slides_spawn(self, slide_index=None, slide_id=None):
   if slide_model is None:
     return
 
-  cache = Cache(self.part.package)
-  slide_part = slide_model(self.part.package, cache)
+  slide_part = slide_model(Cache(self.part.package))
 
   rId = self.part.relate_to(slide_part, RT.SLIDE)
   self._sldIdLst.add_sldId(rId)
@@ -39,11 +38,7 @@ def Slides_spawn(self, slide_index=None, slide_id=None):
   return slide_part.slide
 
 
-class _Model:
-  pass
-
-
-class _Slides(_Model):
+class _Slides:
   def __init__(self, slides):
     self._list = [_Part(s.part, self, s.slide_id) for s in slides]
     self._ids = {}
@@ -80,7 +75,7 @@ class _Slides(_Model):
     return model
 
 
-class _Part(_Model):
+class _Part:
   def __init__(self, part, owner=None, slide_id=None):
     part._model = self
     self._load = part.load
@@ -104,12 +99,11 @@ class _Part(_Model):
   def content_type(self):
     return self._content_type
 
-  def __call__(self, package, cache=None):
-    if cache is not None:
-      uri = cache.next_partname(self._uri)
-    else:
-      uri = package.next_partname(self._uri)
-    part = self._load(uri, self._content_type, self._blob, package)
+  def __call__(self, cache):
+    uri = cache.next_partname(self._uri)
+    part = self._load(uri, self._content_type, self._blob, cache.package)
+
+    cache[self] = part
 
     for rel in self._rels:
       rel(part, cache)
@@ -124,7 +118,7 @@ class _Part(_Model):
     return cls(part, owner)
 
 
-class _Relationship(_Model):
+class _Relationship:
   def __init__(self, rel, owner=None):
     self._rId = rel.rId
     self._reltype = rel.reltype
@@ -152,8 +146,8 @@ class _Relationship(_Model):
     if not self.is_external:
       target = part.package[self.target, self.reltype]
 
-      if target is None:
-        target = cache[self.target] if cache else self.target(part.package)
+      if target is None and cache is not None:
+        target = cache[self.target]
 
     return part.rels.add_relationship(self._reltype, target, self._rId, self.is_external)
 
