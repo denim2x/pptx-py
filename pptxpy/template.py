@@ -1,8 +1,9 @@
 # encoding: utf-8
 
 from types import MethodType as bind
+from posixpath import splitext
 from pptx import Presentation as _load
-from .common import Slides, RT, Cache, PresentationPart
+from .common import Slides, RT, Cache, PresentationPart, PackURI
 
 
 class Template:
@@ -79,7 +80,8 @@ class _Part:
   def __init__(self, part, owner=None, slide_id=None):
     part._model = self
     self._load = part.load
-    self._partname = part.partname
+    base, ext = splitext(part.partname)
+    self._partname = PackURI('%s%s' % (base, ext.lower()) if ext else base)
     self._uri = self.partname.template
     self._content_type = part.content_type
     self._blob = part.blob

@@ -200,7 +200,7 @@ def Rels_pprint(self):
 
 @property
 def Rel_is_static(self):
-  return self.reltype in Rels._static
+  return self.reltype in _static
 
 
 def Rel_eq(self, other, rels=True):
