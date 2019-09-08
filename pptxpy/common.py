@@ -17,28 +17,49 @@ from pptx.slide import Slide, Slides
 from pptx.oxml.ns import NamespacePrefixedTag, qn
 from pptx.presentation import Presentation
 from pptx.parts.presentation import PresentationPart
+from pptx.parts.slide import SlidePart
 
 _void = set()
 
 tmpl_re = re.compile(r"^(.+?)(\d+)?(\.\w+)?$")
 name_re = re.compile(r"^(?:(\d+)_)?")
 
-_static = {
-  RT.SLIDE_LAYOUT, RT.IMAGE, RT.MEDIA, RT.VIDEO, RT.NOTES_MASTER, RT.SLIDE_MASTER
+_media = {
+  RT.IMAGE, RT.MEDIA, RT.VIDEO
 }
+
+_static = {
+  RT.SLIDE_LAYOUT, RT.NOTES_MASTER, RT.SLIDE_MASTER
+} | _media
 
 
 class Cache:
   def __init__(self, package):
     self._package = package
+    prs = self.package.presentation_part.presentation
+    self._outer_partnames = {
+      rel.target_part.partname
+        for node in prs.slide_layouts
+          for rel in node.part.rels.values()
+        if not rel.is_external
+    }
     self._partnames = {}
     self._parts = {}
 
   def next_partname(self, tmpl):
     if tmpl not in self._partnames:
-      self._partnames[tmpl] = self._package.next_partname(tmpl).index
+      self._partnames[tmpl] = self.package.next_partname(tmpl).index
     else:
       self._partnames[tmpl] += 1
+      while not self._available(tmpl):
+        self._partnames[tmpl] += 1
+
+    return self._uri(tmpl)
+
+  def _available(self, tmpl):
+    return self._uri(tmpl) not in self._outer_partnames
+
+  def _uri(self, tmpl):
     return PackURI(tmpl % self._partnames[tmpl])
 
   @property
@@ -54,6 +75,16 @@ class Cache:
     self._parts[model] = part
 
 
+class Presentation_rel_handler:
+  def __get__(self, obj, type=None):
+    return obj.part.package.rel_handler
+
+  def __set__(self, obj, fn):
+    obj.part.package.rel_handler = fn
+
+  def __delete__(self, obj):
+    obj.rel_handler = None
+
 def OpcPackage_getitem(self, cursor):
   part, reltype = cursor
   uri = part.partname
@@ -63,6 +94,13 @@ def OpcPackage_getitem(self, cursor):
   for part in self.iter_parts():
     if part.partname == uri and part.content_type == ct:
       return part
+
+def OpcPackage_emit(self, part, rel):
+  try:
+    return self.rel_handler(part, rel)
+  except TypeError:
+    pass
+
 
 def Slides__get(self, slide_index=None, slide_id=None):
   """
@@ -86,10 +124,10 @@ def Part_drop(self, part):
   dropped = set()
   for rel in self.rels.values():
     if not rel.is_external and rel.target_part is part:
-      dropped.add(rel.rId)
+      dropped.add(rel)
 
-  for rId in dropped:
-    self.drop_rel(rId)
+  for rel in dropped:
+    self.drop_rel(rel.rId)
     # del self.rels[rId]
 
   return dropped
@@ -98,16 +136,15 @@ def Part_drop_all(self, reltype, recursive=True):
   dropped = set()
   for rel in self.rels.values():
     if rel.reltype == reltype:
-      dropped.add(rel.rId)
+      dropped.add(rel)
 
-  for rId in dropped:
-    rel = self.rels[rId]
+  for rel in dropped:
     if recursive and not rel.is_external:
       for part in rel.target_part.related_parts:
-        self.drop(part)
+        dropped.update(self.drop(part))
 
-    self.drop_rel(rId)
-    # del self.rels[rId]
+    self.drop_rel(rel.rId)
+    # del self.rels[rId] 
 
   return dropped
 
@@ -144,7 +181,6 @@ def Part_is_similar(self, other, rels=True):
     return False
 
   return True
-
 
 @property
 def Part_basename(self):
@@ -200,7 +236,7 @@ def Rels_pprint(self):
 
 @property
 def Rel_is_static(self):
-  return self.reltype in _static
+  return self.reltype in Rels._static
 
 
 def Rel_eq(self, other, rels=True):
@@ -276,7 +312,10 @@ def Slide_is_similar(self, other):
 
 
 def _mount():
+  Presentation.rel_handler = Presentation_rel_handler()
   OpcPackage.__getitem__ = OpcPackage_getitem
+  OpcPackage.rel_handler = None
+  OpcPackage.__call__ = OpcPackage_emit
   Slides._get = Slides__get
   Slides.clear = Slides_clear
   Part.drop = Part_drop
@@ -295,3 +334,12 @@ def _mount():
   PackURI.template = PackURI_template
   PackURI.is_similar = PackURI_is_similar
   Slide.is_similar = Slide_is_similar
+
+  Part._reltypes = {}
+  Part._reltype = None
+
+  SlidePart._reltypes = {
+    RT.NOTES_SLIDE, #RT.SLIDE_LAYOUT
+  }
+  SlidePart._reltype = RT.SLIDE
+

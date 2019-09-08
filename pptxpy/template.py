@@ -3,7 +3,7 @@
 from types import MethodType as bind
 from posixpath import splitext
 from pptx import Presentation as _load
-from .common import Slides, RT, Cache, PresentationPart, PackURI
+from .common import Slides, RT, Cache, PresentationPart, PackURI, Slide, Part, Rel
 
 
 class Template:
@@ -15,6 +15,9 @@ class Template:
     prs = _load(self._uri)
     if self._model is None:
       self._model = _Slides(prs.slides)
+
+    for node in prs.slide_layouts:
+      node.part.drop_all(RT.SLIDE, recursive=False)
 
     prs.part.drop_all(RT.SLIDE)
     prs.slides.clear()
@@ -76,18 +79,18 @@ class _Slides:
     return model
 
 
-class _Part:
+class _Reference:
   def __init__(self, part, owner=None, slide_id=None):
-    part._model = self
-    self._load = part.load
     base, ext = splitext(part.partname)
     self._partname = PackURI('%s%s' % (base, ext.lower()) if ext else base)
-    self._uri = self.partname.template
     self._content_type = part.content_type
     self._blob = part.blob
     self._owner = owner
     self._slide_id = slide_id
-    self._rels = [_Relationship(rel, self) for rel in part.rels.values()]
+
+  @property
+  def blob(self):
+    return self._blob
 
   @property
   def slide_id(self):
@@ -101,6 +104,15 @@ class _Part:
   def content_type(self):
     return self._content_type
 
+
+class _Part(_Reference):
+  def __init__(self, part, owner=None, slide_id=None):
+    _Reference.__init__(self, part, owner, slide_id)
+    part._model = self
+    self._uri = self.partname.template
+    self._load = part.load    
+    self._rels = [_Relationship(rel, self) for rel in part.rels.values()]
+
   def __call__(self, cache):
     uri = cache.next_partname(self._uri)
     part = self._load(uri, self._content_type, self._blob, cache.package)
@@ -108,7 +120,15 @@ class _Part:
     cache[self] = part
 
     for rel in self._rels:
-      rel(part, cache)
+      if rel.reltype == RT.SLIDE:
+        out = rel[part.package(part, rel)]
+        if out:
+          out(part, cache)
+        continue
+
+      out = rel(part, cache)
+      if rel.reltype in part._reltypes:
+        out.target_part.relate_to(part, part._reltype)
 
     return part
 
@@ -122,13 +142,19 @@ class _Part:
 
 class _Relationship:
   def __init__(self, rel, owner=None):
-    self._rId = rel.rId
     self._reltype = rel.reltype
     self._is_external = rel.is_external
-    if not self.is_external:
-      self._target = _Part.get(rel.target_part, owner)
+    if self.reltype == RT.SLIDE and isinstance(owner, Part):
+      self._rId = None
+      self._target = owner
     else:
-      self._target = rel.target_ref
+      self._rId = rel.rId
+      if self.reltype == RT.SLIDE:
+        self._target = _Reference(rel.target_part, owner)
+      elif not self.is_external:
+        self._target = _Part.get(rel.target_part, owner)
+      else:
+        self._target = rel.target_ref
 
   @property
   def is_external(self):
@@ -140,18 +166,21 @@ class _Relationship:
 
   @property
   def target(self):
-    return self._target
+    return self._target  
+
+  def __getitem__(self, target):
+    if target:
+      return _Relationship(self, target)
 
   def __call__(self, part, cache=None):
     target = self.target
-
-    if not self.is_external:
+    if not self.is_external and self.reltype != RT.SLIDE:
       target = part.package[self.target, self.reltype]
 
       if target is None and cache is not None:
         target = cache[self.target]
 
-    return part.rels.add_relationship(self._reltype, target, self._rId, self.is_external)
+    return part.load_rel(self.reltype, target, self._rId, self.is_external)
 
 
 def _mount():
