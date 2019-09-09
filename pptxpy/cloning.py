@@ -30,7 +30,7 @@ def Slides_duplicate(self, slide_index=None, slide_id=None, slide_master=False):
 
   Return value: the newly created |Slide| instance.
   """
-  slide = self._get(slide_index, slide_id)
+  slide = self.at(slide_index, slide_id)
   if slide is None:
     return
 

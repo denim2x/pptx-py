@@ -75,42 +75,19 @@ class Cache:
     self._parts[model] = part
 
 
-class Presentation_rel_handler:
-  def __get__(self, obj, type=None):
-    return obj.part.package.rel_handler
-
-  def __set__(self, obj, fn):
-    obj.part.package.rel_handler = fn
-
-  def __delete__(self, obj):
-    obj.rel_handler = None
-
-def OpcPackage_getitem(self, cursor):
-  part, reltype = cursor
-  uri = part.partname
-  ct = part.content_type
-  if reltype not in _static:
-    return
-  for part in self.iter_parts():
-    if part.partname == uri and part.content_type == ct:
-      return part
-
-def OpcPackage_emit(self, part, rel):
-  try:
-    return self.rel_handler(part, rel)
-  except TypeError:
-    pass
-
-
-def Slides__get(self, slide_index=None, slide_id=None):
+def Slides_at(self, slide_index=None, slide_id=None):
   """
   """
   slide = None
 
   if slide_index is not None:
-    slide = self[slide_index]
+    if isinstance(slide_index, int):
+      if slide_index < 0:
+        slide_index += len(self)
+      if 0 <= slide_index < len(self):
+        slide = self[slide_index]
   elif slide_id is not None:
-    slide = self.get(slide_id)
+    slide = self.get(int(slide_id))
 
   return slide
 
@@ -131,72 +108,6 @@ def Slide_is_similar(self, other):
     return False
 
   return self.part.is_similar(other.part)
-
-def Part_drop(self, part):
-  dropped = set()
-  for rel in self.rels.values():
-    if not rel.is_external and rel.target_part is part:
-      dropped.add(rel)
-
-  for rel in dropped:
-    self.drop_rel(rel.rId)
-    # del self.rels[rId]
-
-  return dropped
-
-def Part_drop_all(self, reltype, recursive=True):
-  dropped = set()
-  for rel in self.rels.values():
-    if rel.reltype == reltype:
-      dropped.add(rel)
-
-  for rel in dropped:
-    if recursive and not rel.is_external:
-      for part in rel.target_part.related_parts:
-        dropped.update(self.drop(part))
-
-    self.drop_rel(rel.rId)
-    # del self.rels[rId] 
-
-  return dropped
-
-def Part_is_similar(self, other, rels=True):
-  """
-  Essentially performs shallow structural equality testing between
-  *self* and *other* - with the exception of *partname* which is
-  tested for _similarity_ rather then _equality_.
-
-  Return value: The Boolean result of the tests.
-  """
-  if self is None:
-    return other is None
-
-  if other is None:
-    return False
-
-  if not isinstance(other, Part):
-    return False
-
-  if self.partname.is_similar(other.partname):
-    return False
-
-  if self.content_type != other.content_type:
-    return False
-
-  if self.blob != other.blob:
-    return False
-
-  if self.package != other.package:
-    return False
-
-  if rels and self.rels != other.rels:
-    return False
-
-  return True
-
-@property
-def Part_basename(self):
-  return posixpath.basename(self.partname)
 
 
 def Rels_attach(self, rel):
@@ -309,36 +220,112 @@ def PackURI_is_similar(self, other):
 
   return self.template == other.template
 
+def OpcPackage_getitem(self, cursor):
+  part, reltype = cursor
+  uri = part.partname
+  ct = part.content_type
+  if reltype not in _static:
+    return
+  for part in self.iter_parts():
+    if part.partname == uri and part.content_type == ct:
+      return part
+
+def Part_drop(self, part):
+  dropped = set()
+  for rel in self.rels.values():
+    if not rel.is_external and rel.target_part is part:
+      dropped.add(rel)
+
+  for rel in dropped:
+    self.drop_rel(rel.rId)
+    # del self.rels[rId]
+
+  return dropped
+
+def Part_drop_all(self, reltype, recursive=True):
+  dropped = set()
+  for rel in self.rels.values():
+    if rel.reltype == reltype:
+      dropped.add(rel)
+
+  for rel in dropped:
+    if recursive and not rel.is_external:
+      for part in rel.target_part.related_parts:
+        dropped.update(self.drop(part))
+
+    self.drop_rel(rel.rId)
+    # del self.rels[rId] 
+
+  return dropped
+
+def Part_is_similar(self, other, rels=True):
+  """
+  Essentially performs shallow structural equality testing between
+  *self* and *other* - with the exception of *partname* which is
+  tested for _similarity_ rather then _equality_.
+
+  Return value: The Boolean result of the tests.
+  """
+  if self is None:
+    return other is None
+
+  if other is None:
+    return False
+
+  if not isinstance(other, Part):
+    return False
+
+  if self.partname.is_similar(other.partname):
+    return False
+
+  if self.content_type != other.content_type:
+    return False
+
+  if self.blob != other.blob:
+    return False
+
+  if self.package != other.package:
+    return False
+
+  if rels and self.rels != other.rels:
+    return False
+
+  return True
+
+@property
+def Part_basename(self):
+  return posixpath.basename(self.partname)
+
 
 def _mount():
-  Presentation.rel_handler = Presentation_rel_handler()
-  OpcPackage.__getitem__ = OpcPackage_getitem
-  OpcPackage.rel_handler = None
-  OpcPackage.__call__ = OpcPackage_emit
-  Slides._get = Slides__get
+  Slides.at = Slides_at
   Slides.clear = Slides_clear
   Slide.is_similar = Slide_is_similar
 
-  Part.drop = Part_drop
-  Part.drop_all = Part_drop_all
-  Part.is_similar = Part_is_similar
-  Part.basename = Part_basename
   Rels.attach = Rels_attach
   Rels.__eq__ = Rels_eq
   Rels.equals = Rels_eq
   Rels.pprint = Rels_pprint
+
   Rel.is_static = Rel_is_static
   Rel.__eq__ = Rel_eq
   Rel.equals = Rel_eq
   Rel.pprint = Rel_pprint
+
   PackURI.index = PackURI_index
   PackURI.template = PackURI_template
   PackURI.is_similar = PackURI_is_similar
 
-  Part._reltypes = {}
-  Part._reltype = None
+  OpcPackage.__getitem__ = OpcPackage_getitem
 
   SlidePart._reltypes = {
     RT.NOTES_SLIDE, #RT.SLIDE_LAYOUT
   }
   SlidePart._reltype = RT.SLIDE
+
+  Part.drop = Part_drop
+  Part.drop_all = Part_drop_all
+  Part.is_similar = Part_is_similar
+  Part.basename = Part_basename
+  Part._reltypes = {}
+  Part._reltype = None

@@ -1,9 +1,8 @@
 # encoding: utf-8
 
-from types import MethodType as bind
 from posixpath import splitext
 from pptx import Presentation as _load
-from .common import Slides, RT, Cache, PresentationPart, PackURI, Slide, Part, Rel
+from .common import Slides, RT, Cache, Presentation, PresentationPart, PackURI, Slide, Part, Rel
 from .slide import _Slide
 
 
@@ -13,7 +12,7 @@ class Template:
     self._model = None
 
   def __call__(self):
-    prs = _load(self._uri)
+    prs = _load(self._uri)     # FIXME: Check _uri existence
     if self._model is None:
       self._model = _Slides(prs.slides)
 
@@ -24,7 +23,7 @@ class Template:
     prs.slides.clear()
     prs.part._model = self._model
 
-    return prs
+    return _Presentation(prs.part)
 
 
 def Slides_spawn(self, slide_index=None, slide_id=None):
@@ -43,6 +42,18 @@ def Slides_spawn(self, slide_index=None, slide_id=None):
   return _Slide(slide_part)
   # return slide_part.slide
 
+
+class _Presentation(Presentation):
+  def __init__(self, part):
+    Presentation.__init__(self, part._element, part)
+    part._presentation = self
+
+  def save(self, file, update_links=False):  # FIXME: Clean extraneous relationships (including those without corresponding links)
+    for slide in self.slides:
+      slide._relink(self.slides, update_links)
+
+    self.part.save(file)
+    return self
 
 class _Model:
   pass
@@ -126,9 +137,6 @@ class _Part(_Reference):
 
     for rel in self._rels:
       if rel.reltype == RT.SLIDE:
-        out = rel[part.package(part, rel)]
-        if out:
-          out(part, cache)
         continue
 
       out = rel(part, cache)
