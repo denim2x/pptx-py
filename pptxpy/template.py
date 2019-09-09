@@ -4,6 +4,7 @@ from types import MethodType as bind
 from posixpath import splitext
 from pptx import Presentation as _load
 from .common import Slides, RT, Cache, PresentationPart, PackURI, Slide, Part, Rel
+from .slide import _Slide
 
 
 class Template:
@@ -39,10 +40,14 @@ def Slides_spawn(self, slide_index=None, slide_id=None):
   rId = self.part.relate_to(slide_part, RT.SLIDE)
   self._sldIdLst.add_sldId(rId)
 
-  return slide_part.slide
+  return _Slide(slide_part)
+  # return slide_part.slide
 
 
-class _Slides:
+class _Model:
+  pass
+
+class _Slides(_Model):
   def __init__(self, slides):
     self._list = [_Part(s.part, self, s.slide_id) for s in slides]
     self._ids = {}
@@ -79,7 +84,7 @@ class _Slides:
     return model
 
 
-class _Reference:
+class _Reference(_Model):
   def __init__(self, part, owner=None, slide_id=None):
     base, ext = splitext(part.partname)
     self._partname = PackURI('%s%s' % (base, ext.lower()) if ext else base)
@@ -144,10 +149,7 @@ class _Relationship:
   def __init__(self, rel, owner=None):
     self._reltype = rel.reltype
     self._is_external = rel.is_external
-    if self.reltype == RT.SLIDE and isinstance(owner, Part):
-      self._rId = None
-      self._target = owner
-    else:
+    if self.reltype != RT.SLIDE or isinstance(owner, _Model):
       self._rId = rel.rId
       if self.reltype == RT.SLIDE:
         self._target = _Reference(rel.target_part, owner)
@@ -155,6 +157,9 @@ class _Relationship:
         self._target = _Part.get(rel.target_part, owner)
       else:
         self._target = rel.target_ref
+    else:
+      self._rId = None
+      self._target = owner
 
   @property
   def is_external(self):

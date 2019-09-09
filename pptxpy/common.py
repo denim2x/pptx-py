@@ -120,6 +120,18 @@ def Slides_clear(self):
   """
   return self._sldIdLst.clear()
 
+def Slide_is_similar(self, other):
+  if self is None:
+    return other is None
+
+  if other is None:
+    return False
+
+  if not isinstance(other, Slide):
+    return False
+
+  return self.part.is_similar(other.part)
+
 def Part_drop(self, part):
   dropped = set()
   for rel in self.rels.values():
@@ -298,19 +310,6 @@ def PackURI_is_similar(self, other):
   return self.template == other.template
 
 
-def Slide_is_similar(self, other):
-  if self is None:
-    return other is None
-
-  if other is None:
-    return False
-
-  if not isinstance(other, Slide):
-    return False
-
-  return self.part.is_similar(other.part)
-
-
 def _mount():
   Presentation.rel_handler = Presentation_rel_handler()
   OpcPackage.__getitem__ = OpcPackage_getitem
@@ -318,6 +317,8 @@ def _mount():
   OpcPackage.__call__ = OpcPackage_emit
   Slides._get = Slides__get
   Slides.clear = Slides_clear
+  Slide.is_similar = Slide_is_similar
+
   Part.drop = Part_drop
   Part.drop_all = Part_drop_all
   Part.is_similar = Part_is_similar
@@ -333,7 +334,6 @@ def _mount():
   PackURI.index = PackURI_index
   PackURI.template = PackURI_template
   PackURI.is_similar = PackURI_is_similar
-  Slide.is_similar = Slide_is_similar
 
   Part._reltypes = {}
   Part._reltype = None
@@ -342,4 +342,3 @@ def _mount():
     RT.NOTES_SLIDE, #RT.SLIDE_LAYOUT
   }
   SlidePart._reltype = RT.SLIDE
-
