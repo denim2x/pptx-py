@@ -104,9 +104,6 @@ def Slide_is_similar(self, other):
   if other is None:
     return False
 
-  if not isinstance(other, Slide):
-    return False
-
   return self.part.is_similar(other.part)
 
 
@@ -254,7 +251,7 @@ def Part_drop_all(self, reltype, recursive=True):
         dropped.update(self.drop(part))
 
     self.drop_rel(rel.rId)
-    # del self.rels[rId] 
+    # del self.rels[rId]
 
   return dropped
 

@@ -26,7 +26,7 @@ class Template:
     return _Presentation(prs.part)
 
 
-def Slides_spawn(self, slide_index=None, slide_id=None):
+def Slides_spawn(self, slide_index=None, slide_id=None, position=None):
   if self.part._model is None:
     return
 
@@ -34,13 +34,13 @@ def Slides_spawn(self, slide_index=None, slide_id=None):
   if slide_model is None:
     return
 
-  slide_part = slide_model(Cache(self.part.package))
+  ret = slide_model(Cache(self.part.package))
+  rId = self.part.relate_to(ret, RT.SLIDE)
 
-  rId = self.part.relate_to(slide_part, RT.SLIDE)
-  self._sldIdLst.add_sldId(rId)
-
-  return _Slide(slide_part)
-  # return slide_part.slide
+  slide_id = self._sldIdLst.add_sldId(rId)
+  slide = _Slide(ret, slide_id)
+  slide.relocate(position)
+  return slide
 
 
 class _Presentation(Presentation):
@@ -55,12 +55,10 @@ class _Presentation(Presentation):
     self.part.save(file)
     return self
 
-class _Model:
-  pass
 
-class _Slides(_Model):
+class _Slides:
   def __init__(self, slides):
-    self._list = [_Part(s.part, self, s.slide_id) for s in slides]
+    self._list = _SlideParts(slides, self)
     self._ids = {}
 
   def get(self, slide_id):
@@ -83,7 +81,7 @@ class _Slides(_Model):
 
   def __call__(self, slide_index=None, slide_id=None):
     """
-    Create a new |Slide| instance from the Slide model given by either
+    Retrieve the |_Slide| instance from the given by either
     (but not both) *slide_index* or *slide_id*.
     """
     model = None
@@ -95,7 +93,12 @@ class _Slides(_Model):
     return model
 
 
-class _Reference(_Model):
+class _SlideParts(object):
+  def __new__(cls, source, owner=None):
+    return [_Part(s.part, owner, s.slide_id) for s in source]
+
+
+class _Reference:
   def __init__(self, part, owner=None, slide_id=None):
     base, ext = splitext(part.partname)
     self._partname = PackURI('%s%s' % (base, ext.lower()) if ext else base)
@@ -127,7 +130,7 @@ class _Part(_Reference):
     part._model = self
     self._uri = self.partname.template
     self._load = part.load    
-    self._rels = [_Relationship(rel, self) for rel in part.rels.values()]
+    self._rels = _Relationships(part, self)
 
   def __call__(self, cache):
     uri = cache.next_partname(self._uri)
@@ -153,21 +156,22 @@ class _Part(_Reference):
     return cls(part, owner)
 
 
+class _Relationships(object):
+  def __new__(cls, part, owner=None):
+    return [_Relationship(rel, owner) for rel in part.rels.values()]
+
+
 class _Relationship:
   def __init__(self, rel, owner=None):
     self._reltype = rel.reltype
     self._is_external = rel.is_external
-    if self.reltype != RT.SLIDE or isinstance(owner, _Model):
-      self._rId = rel.rId
-      if self.reltype == RT.SLIDE:
-        self._target = _Reference(rel.target_part, owner)
-      elif not self.is_external:
-        self._target = _Part.get(rel.target_part, owner)
-      else:
-        self._target = rel.target_ref
+    self._rId = rel.rId
+    if self.reltype == RT.SLIDE:
+      self._target = _Reference(rel.target_part, owner)
+    elif not self.is_external:
+      self._target = _Part.get(rel.target_part, owner)
     else:
-      self._rId = None
-      self._target = owner
+      self._target = rel.target_ref
 
   @property
   def is_external(self):
@@ -180,10 +184,6 @@ class _Relationship:
   @property
   def target(self):
     return self._target  
-
-  def __getitem__(self, target):
-    if target:
-      return _Relationship(self, target)
 
   def __call__(self, part, cache=None):
     target = self.target

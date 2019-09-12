@@ -6,13 +6,54 @@ _hlinksldjump = "//*[@action='ppaction://hlinksldjump']"
 
 
 class _Slide(Slide):
-  def __init__(self, part):
+  def __init__(self, part, sldId):
     Slide.__init__(self, part._element, part)
-    self.part._slide = self
+    part._slide = self
     self._links = {}
+    self._sldId = sldId
     for link in self.slide_jumps:
-      link.rId = None
-      # del link.attrib["{%s}id" % link.nsmap['r']]
+      link.rId = None  
+
+  def relocate(self, position=None):
+    sldId = self._sldId
+    sldId_list = sldId.getparent()
+    if sldId_list is None:
+      return False
+
+    count = len(sldId_list)
+    append = False
+    if position is None:
+      append = True
+      position = -1
+    
+    if position < 0:
+      position += count
+
+    pos = sldId_list.index(sldId)
+    if pos == position:
+      return False
+
+    del sldId_list[pos]
+    if append:
+      sldId_list.append(sldId)
+    else:
+      sldId_list.insert(position, sldId)
+
+    return True
+
+  def remove(self, position=None):
+    sldId = self._sldId
+    sldId_list = sldId.getparent()
+    if sldId_list is None:
+      return False
+
+    sldId_list.remove(sldId)
+    self.owner_part.drop(self.part)
+    return True
+
+  @property
+  def owner_part(self):
+    return self.part.package.presentation_part
 
   def __getitem__(self, link_id):
     return self._links[self._resolve(link_id)]
