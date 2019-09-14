@@ -25,6 +25,12 @@ class Template:
 
     return _Presentation(prs.part)
 
+  def __len__(self):
+    if self._model is None:
+      return
+
+    return len(self._model)
+
 
 def Slides_spawn(self, slide_index=None, slide_id=None, position=None):
   if self.part._model is None:

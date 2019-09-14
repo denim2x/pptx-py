@@ -6,6 +6,7 @@ except ImportError:
   raise Exception("Module pptx-py requires python-pptx in order to run. Install it first, then try again.")
 
 import posixpath, re
+from collections import defaultdict
 
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT, CONTENT_TYPE as CT
 from pptx.opc.oxml import serialize_part_xml as dump_xml
@@ -36,28 +37,19 @@ _static = {
 class Cache:
   def __init__(self, package):
     self._package = package
-    prs = self.package.presentation_part.presentation
-    self._outer_partnames = {
-      rel.target_part.partname
-        for node in prs.slide_layouts
-          for rel in node.part.rels.values()
-        if not rel.is_external
-    }
-    self._partnames = {}
+    self._partnames = defaultdict(lambda: 0)
+    self._usednames = { p.partname for p in self.package.iter_parts() }
     self._parts = {}
 
   def next_partname(self, tmpl):
-    if tmpl not in self._partnames:
-      self._partnames[tmpl] = self.package.next_partname(tmpl).index
-    else:
+    self._partnames[tmpl] += 1
+    while not self._available(tmpl):
       self._partnames[tmpl] += 1
-      while not self._available(tmpl):
-        self._partnames[tmpl] += 1
 
     return self._uri(tmpl)
 
   def _available(self, tmpl):
-    return self._uri(tmpl) not in self._outer_partnames
+    return self._uri(tmpl) not in self._usednames
 
   def _uri(self, tmpl):
     return PackURI(tmpl % self._partnames[tmpl])
