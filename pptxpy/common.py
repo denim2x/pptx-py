@@ -19,6 +19,7 @@ from pptx.oxml.ns import NamespacePrefixedTag, qn
 from pptx.presentation import Presentation
 from pptx.parts.presentation import PresentationPart
 from pptx.parts.slide import SlidePart
+from pptx.util import lazyproperty
 
 _void = set()
 
@@ -30,7 +31,7 @@ _media = {
 }
 
 _static = {
-  RT.SLIDE_LAYOUT, RT.NOTES_MASTER, RT.SLIDE_MASTER
+  RT.SLIDE_LAYOUT, RT.NOTES_MASTER, RT.SLIDE_MASTER, RT.CUSTOM_XML
 } | _media
 
 

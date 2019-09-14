@@ -13,7 +13,6 @@ _mount()
 from .removal import _mount
 _mount()
 
-from .template import Template, _mount
-_mount()
+from .template import Template
 
 del _mount

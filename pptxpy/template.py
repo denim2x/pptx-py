@@ -2,7 +2,7 @@
 
 from posixpath import splitext
 from pptx import Presentation as _load
-from .common import Slides, RT, Cache, Presentation, PresentationPart, PackURI, Slide, Part, Rel
+from .common import lazyproperty, Slides, RT, Cache, Presentation, PresentationPart, PackURI, Slide, Part, Rel
 from .slide import _Slide
 
 
@@ -11,19 +11,22 @@ class Template:
     self._uri = uri
     self._model = None
 
+  @property
+  def model(self):
+    return self._model
+
   def __call__(self):
     prs = _load(self._uri)     # FIXME: Check _uri existence
     if self._model is None:
-      self._model = _Slides(prs.slides)
+      self._model = _Model(prs.slides)
 
     for node in prs.slide_layouts:
       node.part.drop_all(RT.SLIDE, recursive=False)
 
     prs.part.drop_all(RT.SLIDE)
-    prs.slides.clear()
-    prs.part._model = self._model
+    prs.slides.clear()    
 
-    return _Presentation(prs.part)
+    return _Presentation(prs.part, self)
 
   def __len__(self):
     if self._model is None:
@@ -32,37 +35,63 @@ class Template:
     return len(self._model)
 
 
-def Slides_spawn(self, slide_index=None, slide_id=None, position=None):
-  if self.part._model is None:
-    return
-
-  slide_model = self.part._model(slide_index, slide_id)
-  if slide_model is None:
-    return
-
-  ret = slide_model(Cache(self.part.package))
-  rId = self.part.relate_to(ret, RT.SLIDE)
-
-  slide_id = self._sldIdLst.add_sldId(rId)
-  slide = _Slide(ret, slide_id)
-  slide.relocate(position)
-  return slide
-
-
 class _Presentation(Presentation):
-  def __init__(self, part):
+  def __init__(self, part, template):
     Presentation.__init__(self, part._element, part)
     part._presentation = self
+    self._source = template
+
+  @property
+  def model(self):
+    return self._source.model
 
   def save(self, file, update_links=False):  # FIXME: Clean extraneous relationships (including those without corresponding links)
     for slide in self.slides:
-      slide._relink(self.slides, update_links)
+      slide._update(self.slides, update_links)
 
     self.part.save(file)
     return self
 
+  @lazyproperty
+  def slides(self):
+    sldIdLst = self._element.get_or_add_sldIdLst()
+    self.part.rename_slide_parts([sldId.rId for sldId in sldIdLst])
+    return _Slides(sldIdLst, self)  
 
-class _Slides:
+
+class _Slides(Slides):
+  def __init__(self, sldIdLst, prs):
+    Slides.__init__(self, sldIdLst, prs)
+    self._model = prs.model
+
+  def __call__(self, slide_index=None, slide_id=None, position=None):
+    model = self._model
+    if model is None:
+      return
+
+    if slide_index is None and slide_id is None:
+      ret = []
+
+      for i in range(len(model)):
+        ret.append(self(i))
+
+      return ret
+
+    slide_model = model(slide_index, slide_id)
+    if slide_model is None:
+      return
+
+    ret = slide_model(Cache(self.part.package))
+    rId = self.part.relate_to(ret, RT.SLIDE)
+
+    slide_id = self._sldIdLst.add_sldId(rId)
+    slide = _Slide(ret, slide_id)
+    slide.relocate(position)
+    return slide
+
+
+
+class _Model:
   def __init__(self, slides):
     self._list = _SlideParts(slides, self)
     self._ids = {}
@@ -200,8 +229,3 @@ class _Relationship:
         target = cache[self.target]
 
     return part.load_rel(self.reltype, target, self._rId, self.is_external)
-
-
-def _mount():
-  Slides.__call__ = Slides_spawn
-  PresentationPart._model = None

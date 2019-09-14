@@ -80,8 +80,8 @@ class _Slide(Slide):
     return self._xpath(_hlinksldjump)  
 
   def relink(self, links_dict=None, **links):
-    self._update(links_dict)
-    self._update(links)
+    self._drain(links_dict)
+    self._drain(links)
     return self
 
   def unlink(self, id_list=None, *ids):
@@ -130,7 +130,7 @@ class _Slide(Slide):
 
     return rId
 
-  def _relink(self, slides, update=False):
+  def _update(self, slides, update=False):
     for link in self.slide_jumps:
       if link not in self._links:
         self._strip(link)
@@ -178,7 +178,7 @@ class _Slide(Slide):
 
     return ret
 
-  def _update(self, links):
+  def _drain(self, links):
     if links is None:
       return False
 
