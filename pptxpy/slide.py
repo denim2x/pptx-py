@@ -2,8 +2,18 @@
 
 from .common import Slide, RT
 
-_hlinksldjump = "//*[@action='ppaction://hlinksldjump']"
+pp_hlinksldjump = "ppaction://hlinksldjump"
+_hlinksldjump = "//*[@action='%s']" % pp_hlinksldjump
 
+
+def relate(self, rId=None):
+  if rId is None:
+    self.action = None
+  else:
+    self.action = pp_hlinksldjump
+
+  self.rId = rId
+  return rId
 
 class _Slide(Slide):
   def __init__(self, part, sldId):
@@ -11,8 +21,9 @@ class _Slide(Slide):
     part._slide = self
     self._links = {}
     self._sldId = sldId
-    for link in self.slide_jumps:
-      link.rId = None  
+    self._hlinksldjumps = self.slide_jumps
+    for link in self._hlinksldjumps:
+      relate(link)
 
   def relocate(self, position=None):
     sldId = self._sldId
@@ -101,7 +112,7 @@ class _Slide(Slide):
     if not isinstance(link_id, int):
       return link_id
 
-    links = self.slide_jumps
+    links = self._hlinksldjumps
     if links:
       try:
         return links[link_id]
@@ -112,16 +123,14 @@ class _Slide(Slide):
     rId = link.rId
     if rId is None:
       rId = self.part.relate_to(target, RT.SLIDE)
-      link.rId = rId
-      return rId
+      return relate(link, rId)
 
     rels = self.part.rels
     if not update:
       if rId in rels:    # FIXME: Validate relationship
         return rId
 
-      link.rId = None
-      return
+      return relate(link)
 
     if rId in rels:
       rels[rId]._target = target
@@ -131,10 +140,10 @@ class _Slide(Slide):
     return rId
 
   def _update(self, slides, update=False):
-    for link in self.slide_jumps:
+    for link in self._hlinksldjumps:
       if link not in self._links:
         self._strip(link)
-        link.rId = None
+        relate(link)
         continue
 
       slide_id = self._links[link]
@@ -145,7 +154,7 @@ class _Slide(Slide):
 
       if target is None:
         if self._strip(link) and update:
-          link.rId = None
+          relate(link)
         continue
 
       self._relate(link, target.part, update)
@@ -158,7 +167,7 @@ class _Slide(Slide):
     if rId in rels:
       del rels[rId]
       return True
-      # link.rId = None
+
     return False
 
   def _pop(self, link_id):

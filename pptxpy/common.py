@@ -220,9 +220,12 @@ def OpcPackage_getitem(self, cursor):
     if part.partname == uri and part.content_type == ct:
       return part
 
-def Part_drop(self, part):
+def Part_drop(self, part, exclude=None):
   dropped = set()
   for rel in self.rels.values():
+    if exclude is not None and rel.reltype in exclude:
+      continue
+
     if not rel.is_external and rel.target_part is part:
       dropped.add(rel)
 
@@ -238,10 +241,11 @@ def Part_drop_all(self, reltype, recursive=True):
     if rel.reltype == reltype:
       dropped.add(rel)
 
+  exclude = None if isinstance(recursive, bool) else recursive
   for rel in dropped:
     if recursive and not rel.is_external:
       for part in rel.target_part.related_parts:
-        dropped.update(self.drop(part))
+        dropped.update(self.drop(part, exclude))
 
     self.drop_rel(rel.rId)
     # del self.rels[rId]

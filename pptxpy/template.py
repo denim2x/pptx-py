@@ -23,7 +23,7 @@ class Template:
     for node in prs.slide_layouts:
       node.part.drop_all(RT.SLIDE, recursive=False)
 
-    prs.part.drop_all(RT.SLIDE)
+    prs.part.drop_all(RT.SLIDE, { RT.COMMENT_AUTHORS, RT.PRES_PROPS })
     prs.slides.clear()    
 
     return _Presentation(prs.part, self)
